@@ -1,5 +1,4 @@
-# mechanitis_melinaea
-Code and data underlying the manuscript by Eva van der Heijden et al. on Mechanitis and Melinaea diversification.
+# Code and data underlying the manuscript by Eva van der Heijden et al. on Mechanitis and Melinaea butterfly diversification.
 
 Figure 1:
 
