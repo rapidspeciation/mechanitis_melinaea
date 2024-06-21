@@ -1,5 +1,8 @@
 # Code and data underlying the manuscript by van der Heijden et al. on _Mechanitis_ and _Melinaea_ butterfly diversification.
 
+**Processing of raw reads**
+- [Snakemake file]()
+
 **Figure 1:**
 
 **Figure 2:**
