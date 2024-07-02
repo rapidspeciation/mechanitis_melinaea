@@ -1,0 +1,55 @@
+configfile: "config.Mechanitis-step2.yaml"
+
+# the configfile here is not a line per individual, but a line per chromosome
+# change all the 'envmodules' to modules that work on your cluster
+# make sure the paths to all the scripts and jars are correct
+# I ran the snakemake until the 'genotypeGVCF' step, and I did some 'prefilterchecks' with vcftools to decide what settings to use for the last step to filter the vcf to a 'base' level for depth and missingness
+
+rule all:
+    input: expand("filtered/Mechanitis.rmINDEL.max0.5N.minDP3.minmeanDP5.maxmeanDP30.rmINDlowD.{chr}.vcf.gz", chr=config["chrom"])
+
+# Combines all the individual GVCF-files into 1 file per chromosome
+rule combineGVCF:
+    input:
+        ref="/path/to/reference/mechanitis/snakemake/ilMecMess1.1.primary.fa"
+    params:
+        gvcf=config["listgvcf"],
+        interval=lambda wildcards: config["chrom"][wildcards.chr]
+    output:
+        combgvcf="comb.gvcf/all_Mechanitis.{chr}.g.vcf.gz",
+        tbi="comb.gvcf/all_Mechanitis.{chr}.g.vcf.gz.tbi"
+    envmodules:
+        "openjdk/1.8.0_362"
+    shell:
+        "java -Xmx50G -Xms10G -jar /path/to/script/bin/packages/gatk-3.8.1.0/GenomeAnalysisTK.jar -T CombineGVCFs -R {input.ref} -V {params.gvcf} -o >
+
+
+# Turns the combined GVCF-file into a VCF-file
+rule genotypeGVCF:
+    input:
+        combgvcf="comb.gvcf/all_Mechanitis.{chr}.g.vcf.gz",
+        ref="/path/to/reference/mechanitis/snakemake/ilMecMess1.1.primary.fa"
+    output:
+        vcf="vcf/Mechanitis.{chr}.vcf.gz",
+        tbi="vcf/Mechanitis.{chr}.vcf.gz.tbi"
+    envmodules:
+        "openjdk/1.8.0_362"
+    shell:
+        "java -Xmx50G -Xms10G -jar /path/to/script/bin/packages/gatk-3.8.1.0/GenomeAnalysisTK.jar -T GenotypeGVCFs -R {input.ref} -V {input.combgvcf}>
+
+## Note: this is where I do a check to decide on the filter-settings in the last step. But that is not a part of the snakemake - 
+# I would thin the vcf-files, preferably combining several chromosomes, and run some vcftools commands to check for sequencing depth per site, individuals with particularly bad overall depth etc. I base my filtering on that
+# see e.g. : https://speciationgenomics.github.io/filtering_vcfs/ 
+
+# Filter the VCF-files to 'base'-files
+rule filterVCF:
+    input:
+        vcf="vcf/Mechanitis.{chr}.vcf.gz",
+        INDlist="/path/to/list/ID.depth.below3.list"
+    output:
+        filter="filtered/Mechanitis.rmINDEL.max0.5N.minDP3.minmeanDP5.maxmeanDP30.rmINDlowD.{chr}.vcf.gz"
+    envmodules:
+        "vcftools/0.1.16--pl5321hd03093a_7"
+    shell:
+        "vcftools --gzvcf {input.vcf} --remove-indels --max-missing 0.5 --minDP 3 --min-meanDP 5 --max-meanDP 30 --remove {input.INDlist} \
+         --recode --stdout | gzip -c > {output.filter}"
