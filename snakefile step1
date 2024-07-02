@@ -1,0 +1,131 @@
+configfile: "config.Mechanitis_cram.yaml"
+
+# make sure the path to the reference genome and to the scripts (fastp / jars for GATK, picardjar) are correct
+# change all the 'envmodules' to modules that work on your cluster
+
+rule all:
+    input: expand("gvcf/{sample}.gvcf.gz", sample=config["cram"])
+
+# Convert the CRAM-files into FastQ files
+rule convert_cram:
+    input:
+        cram=lambda wildcards: config["cram"][wildcards.sample]
+    output:
+        f="FastQ/{sample}.1.fq.gz",
+        r="FastQ/{sample}.2.fq.gz"
+    envmodules:
+        "common-apps/samtools/1.17"
+    shell:
+        "samtools fastq -1 {output.f} -2 {output.r} -n {input.cram}"
+
+# Remove (parts of) Nextera adapter sequences, polyG tails created by lack of Illumina signal 
+# Filters with default settings, minimum read length (-l) of 50 and four threads (-w)
+rule fastp:
+    input:
+        f="FastQ/{sample}.1.fq.gz",
+        r="FastQ/{sample}.2.fq.gz"
+    output:
+        f="noAdapt/{sample}.1.fq.gz",
+        r="noAdapt/{sample}.2.fq.gz",
+        html="{sample}.fastp.html"
+    shell:
+        "/path/to/script/bin/packages/fastp --in1 {input.f} --in2 {input.r} --out1 {output.f} --out2 {output.r} -l 50 -w 4 -h {output.html}"
+
+
+# Map the reads to the reference genome (SM=individual, lane not indicated)
+rule bwa_map:
+    input:
+        fa="/path/to/reference/mechanitis/snakemake/ilMecMess1.1.primary.fa",
+        fq1="noAdapt/{sample}.1.fq.gz",
+        fq2="noAdapt/{sample}.2.fq.gz"
+    output:
+        bam="bam/{sample}.bam"
+    log:
+        "logs/{sample}.bwa.log"
+    params:
+        prefix=lambda wildcards: config['prefix'][wildcards.sample],
+        rg1="@RG\\tPL:Illumina\\tSM:",
+        rg2="\\tID:"
+    threads: 8
+    envmodules:
+        "bwa/0.7.17--h7132678_9",
+        "common-apps/samtools/1.17"
+    shell:
+        "(bwa mem -M -R '{params.rg1}{params.prefix}{params.rg2}{params.prefix}' "
+        "-t {threads} {input.fa} {input.fq1} {input.fq2} | samtools sort - > {output.bam}) 2> {log}"
+
+
+# Index the bam files
+rule index:
+    input:
+        "bam/{sample}.bam"
+    output:
+        "bam/{sample}.bam.bai"
+    envmodules:
+        "common-apps/samtools/1.17"
+    shell:
+        "samtools index {input}"
+
+
+# Remove reads that are likely to be PCR or optical duplicates
+rule remove_duplicates:
+    input:
+        bam="bam/{sample}.bam",
+        bai="bam/{sample}.bam.bai"
+    output:
+        obam="bamFiles_rmd/{sample}.rmd.bam",
+        met="bamFiles_rmd/{sample}.rmd.bam.metrics"
+    params:
+        tmpdir="tmp/"
+    log:
+        "logs/{sample}.rmd.log"
+    envmodules:
+        "eclipse-temurin/17.0.6_10-jdk-jammy"
+    shell:
+        "(java -Xmx10g -Djava.io.tmpdir={params.tmpdir} -jar /path/to/script/bin/packages/picard.jar "
+        "MarkDuplicates REMOVE_DUPLICATES=true "
+        "ASSUME_SORTED=true VALIDATION_STRINGENCY=SILENT MAX_FILE_HANDLES_FOR_READ_ENDS_MAP=1000 INPUT={input.bam} "
+        "OUTPUT={output.obam} METRICS_FILE={output.met} TMP_DIR={params.tmpdir}) 2> {log}"
+
+
+# Index and stats for the deduplicated bam files
+rule index_rmd:
+    input:
+        "bamFiles_rmd/{sample}.rmd.bam"
+    output:
+        "bamFiles_rmd/{sample}.rmd.bam.bai"
+    envmodules:
+        "common-apps/samtools/1.17"
+    shell:
+        "samtools index {input}"
+
+rule stats:
+    input:
+        "bamFiles_rmd/{sample}.rmd.bam"
+    output:
+        stats="bamFiles_rmd/{sample}.stats",
+        flagstat="bamFiles_rmd/{sample}.flagstats"
+    envmodules:
+        "common-apps/samtools/1.17"
+    shell:
+        "samtools stats {input} > {output.stats}; "
+        "samtools flagstat {input} > {output.flagstat}"
+
+
+# Run GATK HaplotypeCaller
+rule haplotypecaller:
+    input:
+        bam="bamFiles_rmd/{sample}.rmd.bam",
+        bai="bamFiles_rmd/{sample}.rmd.bam.bai",
+        ref="/path/to/reference/mechanitis/snakemake/ilMecMess1.1.primary.fa",
+        stats=ancient("bamFiles_rmd/{sample}.stats")  # this is just to wait for the bam stats to finish, ancient to ignore time stamp
+    output:
+        gvcf="gvcf/{sample}.gvcf.gz",
+        tbi="gvcf/{sample}.gvcf.gz.tbi"
+    log:
+        "logs/{sample}.gvcf.log"
+    envmodules:
+        "openjdk/1.8.0_362"
+    shell:
+        "(java -Xmx50G -Xms10G -jar /path/to/script/bin/packages/gatk-3.8.1.0/GenomeAnalysisTK.jar -T HaplotypeCaller -R {input.ref} "
+        "-I {input.bam} -mbq 20 -o {output.gvcf} -ERC BP_Resolution -nct 10) 2> {log}"
