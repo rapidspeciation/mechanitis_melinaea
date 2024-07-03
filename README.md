@@ -15,12 +15,12 @@
 - [PBS values for Mech. nesaea vs sympatric and allopatric Mech. polymnia](https://github.com/rapidspeciation/mechanitis_melinaea/tree/main/scripts/polW_polB_nes.pbs)
 
 **Figure 4:**
-- [R script to filter BUSCO output]
-- [R script for preliminary synteny ribbon plot]
-- [R script for refined synteny ribbon plot]
+- [R script to filter BUSCO output](https://github.com/rapidspeciation/mechanitis_melinaea/tree/main/scripts/filter_busco_output.R)
+- [R script for preliminary synteny ribbon plot](https://github.com/rapidspeciation/mechanitis_melinaea/tree/main/scripts/plot_synteny.R)
+- [R script for refined synteny ribbon plot](https://github.com/rapidspeciation/mechanitis_melinaea/tree/main/scripts/plot_synteny_fine_tuning.R)
 
-- [R script to calculate and plot rearrangements]
-- [R script to detect breakpoints in Mech. and Mel.]
-- [R script to plot genomescans with breakpoints and boxplots Mech]
-- [R script to plot genomescans with breakpoints and boxplots Mel]
+- [R script to calculate and plot rearrangements](https://github.com/rapidspeciation/mechanitis_melinaea/tree/main/scripts/rearrangement_stats.Rmd)
+- [R script to detect breakpoints in Mechanitis and Melinaea](https://github.com/rapidspeciation/mechanitis_melinaea/tree/main/scripts/breakpoints.Rmd)
+- [R script to plot genomescans with breakpoints and boxplots Mech](https://github.com/rapidspeciation/mechanitis_melinaea/tree/main/scripts/genomescan_mec.Rmd)
+- [R script to plot genomescans with breakpoints and boxplots Mel](https://github.com/rapidspeciation/mechanitis_melinaea/tree/main/scripts/genomescan_mel.Rmd)
 
