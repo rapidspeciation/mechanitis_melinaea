@@ -1,5 +1,5 @@
 ---
-title: "Synteny_ideas"
+title: "Rearrangement_stats"
 output:
   html_document:
     df_print: paged
