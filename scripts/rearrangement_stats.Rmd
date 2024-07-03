@@ -1,0 +1,544 @@
+---
+title: "Synteny_ideas"
+output:
+  html_document:
+    df_print: paged
+editor_options: 
+  chunk_output_type: console
+---
+
+This is an [R Markdown](http://rmarkdown.rstudio.com) Notebook. When you execute code within the notebook, the results appear beneath the code. 
+
+
+```{r setup}
+Sys.Date()
+
+
+library(ggplot2)
+library(viridis)
+library(tidyr)
+library(dplyr)
+library(pals)
+library(ggpubr)
+
+cmd_args <- commandArgs(trailingOnly = TRUE)
+
+#dir organisation: intermediate, plots
+```
+
+
+```{r data}
+#read busco full.table concatenated for all species
+#prep with rename_busco_output.R
+
+
+#table_file <- cmd_args[1]
+table_file <- "../../synteny/intermediate/Mec_Mel_busco_full_table_formated.table"
+
+busco_file <- read.table(table_file)
+colnames(busco_file) <- c("marker", "chr", "start", "end", "strand", "taxa", "chr_len")
+
+#keep only chr number, easier to order
+busco_file <- 
+busco_file %>%
+  mutate(chr=sprintf("%02s", sub(".*_", "", chr))) %>%
+  mutate(chr=sub("^0([A-Z])", "\\1" , chr))
+
+col_anc_seq <- as.data.frame(cbind(chr=unique(busco_file[busco_file$taxa=="ilMelCinx1", "chr"]), anc_element=unique(busco_file[busco_file$taxa=="ilMelCinx1", "chr"]), colour_seq=pals::polychrome(n = 31)))
+
+busco_file <- 
+left_join(busco_file, busco_file[busco_file$taxa=="ilMelCinx1", c("marker", "chr")], by="marker")
+
+colnames(busco_file)[2] <- "chr"
+colnames(busco_file)[8] <- "anc_element"
+
+busco_file <- 
+busco_file %>%
+filter(!is.na(anc_element))
+
+#get the right order of the taxa
+chr_length <- read.table("../../synteny/intermediate/Mec_Mel_sequence_order_mod6.table")
+colnames(chr_length) <- c("taxa", "chr", "chr_len")
+bin_id_order <- unique(chr_length$taxa)
+
+taxa_names_id <- data.frame(cbind(species_name=c("Melitaea cinxia", "Danaus plexippus", "Melinaea ludovica", "Melinaea isocomma", "Melinaea mothone", "Melinaea menophilus", "Melinaea marsaeus", "Mechanitis macrinus", "Mechanitis mazaeus", "Mechanitis menapis", "Mechanitis messenoides", "Mechanitis polymnia"), taxa=bin_id_order))
+
+# taxa_names <- bin_id_order
+# names(taxa_names) <- taxa_names_id$species_name
+
+busco_file <- busco_file[order(match(busco_file$taxa, bin_id_order)),]
+busco_file$taxa <- as.factor(busco_file$taxa)
+busco_file$taxa <- factor(busco_file$taxa, levels = c(bin_id_order))
+
+#isocomma Z is chr 2
+busco_file[busco_file$taxa=="ilMelIsoc1" & busco_file$chr=="02", "chr"]="Z"
+
+busco_file <- 
+  busco_file %>%
+   left_join(taxa_names_id) %>%
+  mutate(species_name=as.factor(species_name))
+
+busco_file$species_name <- factor(busco_file$species_name, levels = c(taxa_names_id$species_name))
+
+#remove W
+busco_file <- busco_file[busco_file$chr!="W" & busco_file$chr!="W2",] 
+
+
+```
+
+
+```{r data_check}
+#number of chromosomes in each taxa (included in analysis, ie those that contain BUSCO)
+nr_chr.df <- 
+busco_file %>%
+  select(taxa, chr) %>%
+  unique() %>%
+  group_by(taxa) %>%
+  mutate(nr_chr=n())
+
+#get nr of chr excluding W
+nr_chr_per_taxa.df <- 
+  busco_file %>%
+  select(taxa, chr) %>%
+  unique() %>%
+  group_by(taxa) %>%
+  summarize(Chr_nr=n())
+
+write.table(nr_chr_per_taxa.df, file = "../output/nr_chr_per_taxa.table")
+
+#number of BUSCO genes per taxa
+genes_per_taxa <- 
+busco_file %>%
+  group_by(taxa) %>%
+  summarise(nr_genes=n())
+
+#distance between buscos
+busco_file %>%
+  group_by(taxa, chr) %>%
+  mutate(dist_genes=start-lag(start)) %>%
+  summarise(mean_dist=mean(dist_genes, na.rm = T), med_dist=median(dist_genes, na.rm = T), max(dist_genes, na.rm = T))
+
+
+
+```
+
+
+```{r breakpoints}
+
+#breakpoints
+busco_file$chr_anc_chr <- paste(busco_file$chr, busco_file$anc_element, sep = "_")
+
+#filter groups with only one gene
+busco_file_filt <- 
+  busco_file %>%
+  group_by(taxa, chr_anc_chr) %>%
+  filter(n()>1) %>%
+  ungroup()
+
+
+#count the length of blocks, get a number at the end of ech block
+busco_file_filt$a <- 0
+busco_file_filt <- busco_file_filt[order(busco_file_filt$taxa, busco_file_filt$chr, busco_file_filt$start),]
+busco_file_filt$a[cumsum(rle(busco_file_filt$chr_anc_chr)$lengths)] <- rle(busco_file_filt$chr_anc_chr)$lengths
+
+#filter single transpositions
+#check
+busco_file_filt %>%
+  filter(a==1)
+
+#filter
+busco_file_filt <-  
+busco_file_filt %>%
+  filter(!a==1)
+
+#redo length of blocks  
+busco_file_filt$a <- 0
+busco_file_filt <- busco_file_filt[order(busco_file_filt$taxa, busco_file_filt$chr, busco_file_filt$start),]
+busco_file_filt$a[cumsum(rle(busco_file_filt$chr_anc_chr)$lengths)] <- rle(busco_file_filt$chr_anc_chr)$lengths
+
+#check
+busco_file_filt %>%
+  filter(a==1)
+
+#add start of block and keep only start and end of blocks
+breakpoints <- 
+busco_file_filt %>%
+  mutate(a=case_when(row_number()==1 ~ 1,
+                     lag(a)>1 ~ 1,
+                     .default = a)) %>%
+  filter(a>0)
+
+#save the breakpoint table
+
+
+#summary of the distribution of the length of conserved ancestral blocks
+summary_nr_genes <- 
+breakpoints %>%
+  filter(a>1) %>%
+  group_by(species_name, taxa) %>%
+  summarize(sum=sum(a, na.rm = T), mean=mean(a, na.rm = T), sd=sd(a, na.rm = T), median=median(a, na.rm = T), max=max(a, na.rm = T), min=min(a, na.rm = T))
+
+#write.csv(summary_nr_genes, file = "../output/summary_nr_genes.table", sep = ",", dec = ".", row.names = F)
+
+
+#check max
+breakpoints %>%
+  group_by(species_name) %>%
+  filter(a==max(a, na.rm = T))
+
+breakpoints[breakpoints$taxa=="ilMecMess1",]
+
+#check Z
+Z_fusion <- 
+busco_file_filt %>%
+  filter(chr=="Z" | chr=="Z1" | chr=="Z2") %>%
+  select(species_name, chr, anc_element) %>%
+  unique()
+
+#write.csv(Z_fusion, file = "../output/Z_fusion.table", sep = ",")
+
+busco_file_filt %>%
+  filter(species_name=="Mechanitis macrinus" & anc_element=="06")
+
+busco_file_filt %>%
+  filter(species_name=="Mechanitis macrinus" & anc_element=="10")
+
+```
+
+
+```{r data_plots}
+#get the length distribution for plotting
+length_distr.df <- 
+breakpoints %>%
+  filter(a>1)
+
+
+
+length_distr <- 
+length_distr.df %>%
+  ggplot() +
+  geom_histogram(aes(a), bins = 100) + 
+  geom_vline(data = summary_nr_genes, aes(xintercept = median), colour="royalblue", size = 0.5) +
+  facet_wrap(~species_name) +
+  xlab(label = "Number of BUSCO genes per conserved block") +
+  theme(strip.text = element_text(face = "italic"))
+  
+ggsave(length_distr, filename = "../output/length_distr.png", height = 4, width = 8)
+```
+
+
+```{r data_plots_fusion_fissions}
+
+#estimate number of fusions/fissions
+fissions <- 
+length_distr.df %>%
+  count(taxa, anc_element) %>%
+  mutate(fiss=n-1)
+
+fissions_per_taxa <- 
+  fissions %>%
+  group_by(taxa) %>%
+  summarise(fissions=sum(fiss))
+
+
+fusions <- 
+length_distr.df %>%
+  count(taxa, chr) %>%
+  mutate(fus=n-1)
+
+
+fusions_per_taxa <- 
+  fusions %>%
+  group_by(taxa) %>%
+  summarise(fusions=sum(fus))
+
+
+#print table
+  fusions_per_taxa %>%
+  left_join(fissions_per_taxa) %>%
+write.table("../output/rearr_per_taxa.table")
+
+#create long form for plotting
+fus_fiss_long <- 
+  fusions_per_taxa %>%
+  left_join(fissions_per_taxa) %>%
+    pivot_longer(cols = -taxa, values_to = "events", names_to = "type")
+
+#get the right order of taxa names
+fus_fiss_long <- 
+fus_fiss_long %>%
+   left_join(taxa_names_id) %>%
+  mutate(species_name=as.factor(species_name))
+
+fus_fiss_long$species_name <- factor(fus_fiss_long$species_name, levels = c(taxa_names_id$species_name))
+
+#plot
+fus_fiss_long %>%
+    ggplot() +
+    geom_bar(aes(species_name, events, fill=type), stat="identity", position="dodge") +
+  coord_flip() +
+  scale_x_discrete(limits=rev) +
+  scale_fill_manual(values = c("goldenrod","tan4"),
+                    label = c("Fission","Fusion"),
+                    name="Type") +
+  theme_classic() +
+  theme(axis.title = element_blank(),
+        text = element_text(size = 12),
+        axis.text.y = element_text(face="italic", size=12))
+
+ggsave(filename = "../output/bar_fusions_fission.png", 
+       height = 8,
+       width = 4)
+
+
+fus_fiss_long %>%
+  filter(!taxa %in% c("ilDanPlex4", "ilMelCinx1")) %>%
+    ggplot() +
+    geom_boxplot(aes(type, events, fill=type)) +
+  scale_fill_manual(values = c("goldenrod","tan4"),
+                    label = c("Fission","Fusion"),
+                    name="Type") +
+  scale_y_continuous(name = "Count",
+                     limits=c(50,120)) +
+  scale_x_discrete(labels=c("Fissions", "Fusions")) +
+  theme_classic() +
+  theme(axis.title.x = element_blank(),
+        text = element_text(size = 12, colour = "black"),
+        legend.position = "none")
+
+ggsave(filename = "../output/box_fusions_fission.png", 
+       height = 4,
+       width = 3)
+
+
+fus_fiss_long %>%
+  mutate(genus=sub(" .*", "", fus_fiss_long$species_name)) %>%
+  filter(!taxa %in% c("ilDanPlex4", "ilMelCinx1")) %>%
+    ggplot(aes(type, events)) +
+    geom_violin(aes(type, events, fill=type)) +
+  scale_fill_manual(values = c("goldenrod","tan4"),
+                    label = c("Fission","Fusion"),
+                    name="Type") +
+  scale_y_continuous(name = "Count",
+                     limits=c(60,120)) +
+  #scale_x_discrete(labels=c("Fissions", "Fusions")) +
+  stat_compare_means(aes(colour=type)) +
+  facet_wrap(~genus, switch = "x") +
+  theme_classic() +
+  theme(panel.border = element_rect(fill="transparent", linewidth = 1),
+        axis.title.x = element_blank(),
+        axis.text.x = element_blank(),
+        axis.ticks.x = element_blank(), 
+        text = element_text(size = 12, colour = "black"),
+        legend.text = element_text(size = 12),
+        strip.text.x = element_text(size = 12, face = "italic"))
+
+ggsave(filename = "../output/violin_fusions_fission.png", 
+       height = 4,
+       width = 6)
+
+fus_fiss_long %>%
+  mutate(genus=sub(" .*", "", fus_fiss_long$species_name)) %>%
+  filter(!taxa %in% c("ilDanPlex4", "ilMelCinx1")) %>%
+    ggplot(aes(type, events)) +
+    geom_violin(aes(type, events, fill=type)) +
+  scale_fill_manual(values = c("goldenrod","tan4"),
+                    label = c("Fission","Fusion"),
+                    name="Type") +
+  scale_y_continuous(name = "Count",
+                     limits=c(60,120)) +
+  #scale_x_discrete(labels=c("Fissions", "Fusions")) +
+  stat_compare_means(aes(colour=type), label.y.npc = 0.9) +
+  facet_wrap(~genus, switch = "x", ncol = 1) +
+  theme_classic() +
+  theme(panel.border = element_rect(fill="transparent", linewidth = 1),
+        axis.title.x = element_blank(),
+        axis.text.x = element_blank(),
+        axis.ticks.x = element_blank(), 
+        text = element_text(size = 14, colour = "black"),
+        legend.text = element_text(size = 14),
+        strip.text.x = element_text(size = 14, face = "italic"))
+
+ggsave(filename = "../output/violin_fusions_fission2.png", 
+       height = 6,
+       width = 5)
+
+
+fus_fiss_long %>%
+  mutate(genus=sub(" .*", "", fus_fiss_long$species_name)) %>%
+  filter(!taxa %in% c("ilDanPlex4", "ilMelCinx1")) %>%
+    ggplot(aes(type, events)) +
+    geom_boxplot(aes(type, events, fill=type)) +
+  scale_fill_manual(values = c("goldenrod","tan4"),
+                    label = c("Fission","Fusion"),
+                    name="Type") +
+  scale_y_continuous(name = "Count",
+                     limits=c(60,120)) +
+  #scale_x_discrete(labels=c("Fissions", "Fusions")) +
+  stat_compare_means(aes(colour=type), label.y.npc = 0.9) +
+  facet_wrap(~genus, switch = "x", ncol = 1) +
+  theme_classic() +
+  theme(panel.border = element_rect(fill="transparent", linewidth = 1),
+        axis.title.x = element_blank(),
+        axis.text.x = element_blank(),
+        axis.ticks.x = element_blank(), 
+        text = element_text(size = 14, colour = "black"),
+        legend.text = element_text(size = 14),
+        legend.position = "left",
+        strip.text.x = element_text(size = 14, face = "italic"))
+
+ggsave(filename = "../output/box_fusions_fission2.png", 
+       height = 6,
+       width = 5)
+
+only_mec_mel <- 
+fus_fiss_long %>%
+  mutate(genus=as.factor(sub(" .*", "", fus_fiss_long$species_name))) %>%
+  filter(!taxa %in% c("ilDanPlex4", "ilMelCinx1"))
+
+only_mec_mel$genus <- factor(only_mec_mel$genus, levels = c("Melinaea", "Mechanitis"))
+
+only_mec_mel %>%  
+    ggplot(aes(type, events)) +
+    geom_boxplot(aes(type, events, fill=type), outliers = F) +
+    geom_jitter(aes(type, events),height = 0, width = 0.08, colour="black") +
+  # scale_colour_manual(values = c("goldenrod","tan4"),
+  #                   label = c("Fission","Fusion"),
+  #                   name="Type") +
+  scale_fill_manual(values = c("orange1", "purple3"),
+                    label = c("Fission","Fusion"),
+                    name="Type") +
+  scale_y_continuous(name = "Count",
+                     limits=c(60,120)) +
+  #scale_x_discrete(labels=c("Fissions", "Fusions")) +
+  stat_compare_means(aes(colour=type), label.y.npc = 0.9) +
+  facet_wrap(~genus, switch = "x", ncol = 1) +
+  theme_classic() +
+  theme(panel.border = element_rect(fill="transparent", linewidth = 1),
+        axis.title.x = element_blank(),
+        axis.text.x = element_blank(),
+        axis.ticks.x = element_blank(), 
+        text = element_text(size = 14, colour = "black"),
+        legend.text = element_text(size = 14),
+        legend.position = "left",
+        strip.text.x = element_text(size = 14, face = "italic"))
+
+only_mec_mel %>%  
+    ggplot(aes(type, events)) +
+    geom_boxplot(aes(type, events, fill=type), outliers = F) +
+    geom_jitter(aes(type, events),height = 0, width = 0.08, colour="black") +
+  # scale_colour_manual(values = c("goldenrod","tan4"),
+  #                   label = c("Fission","Fusion"),
+  #                   name="Type") +
+  scale_fill_manual(values = c("orange1", "purple3"),
+                    label = c("Fission","Fusion"),
+                    name="Type") +
+  scale_y_continuous(name = "Count",
+                     limits=c(70,110)) +
+  #scale_x_discrete(labels=c("Fissions", "Fusions")) +
+  stat_compare_means(aes(colour=type), label.y.npc = 0.95, size=14/2.8) +
+  facet_wrap(~genus, nrow = 1) +
+  theme_classic() +
+  theme(panel.border = element_rect(fill="transparent", linewidth = 1),
+        axis.title.x = element_blank(),
+        axis.text.x = element_blank(),
+        axis.ticks.x = element_blank(), 
+        text = element_text(size = 14, colour = "black"),
+        axis.text.y = element_text(size = 14, colour = "black"),
+        legend.text = element_text(size = 14),
+        legend.position = "top",
+        legend.direction = "vertical",
+        legend.justification=c(0.8,0),
+        strip.text.x = element_text(size = 14, face = "italic"),
+        plot.background = element_rect(fill = "transparent",
+                                       colour = NA))
+
+
+ggsave(bg = "transparent",
+         filename = "../output/point_fusions_fission_v3.png", 
+       height = 4,
+       width = 6)
+
+```
+
+```{r chrom_paint}
+
+
+synt_col <- rev(as.vector(c(pals::kelly(),pals::polychrome()))[2:c(1+length(unique(col_anc_seq$anc_element)))])
+#change grey
+synt_col[9] <-"#85660D"
+synt_col[10] <- "#66B0FF"  
+synt_col[11] <- "#f4ed00"  
+
+busco_file_filt %>%
+  ggplot() +
+  geom_point(aes(chr, start/1000000, col=anc_element), shape=15) +
+facet_wrap(~species_name, scales = "free_y", ncol = 3) +
+scale_colour_manual(name = "Reference element", values = synt_col) +
+scale_y_continuous(name = "Position (Mb)") +
+#scale_x_discrete(label=)
+  coord_flip() +
+  theme_classic() +
+theme(legend.position = "right",
+      #panel.background = element_rect(fill = "white"),
+      strip.background = element_blank(),
+      strip.text = element_text(face = "italic"),
+      axis.title.y = element_blank(),
+      axis.text = element_text(size = 8))
+
+ggsave("../output/anc_element_paint.png", 
+       height = 12,
+       width = 8)
+
+
+```
+
+
+
+
+```{r gene_count}
+
+#gene count
+busco_file %>%
+  group_by(chr) %>%
+  mutate(chr, bin_100kb=cut(start, breaks = seq(0, max(chr_len, na.rm = T),500000))) %>%
+  group_by(taxa, chr, bin_100kb) %>%
+  count() %>%
+  ggplot() +
+  geom_boxplot(aes(chr, n)) +
+facet_wrap(~taxa, scales = "free_x")
+#+
+scale_fill_manual(name = "M. cinxia",
+                    values = as.vector(c(polychrome(n = 31)[2:31], polychrome(n = 31)[1]))) +
+theme_pubr() +
+theme(legend.position = "right",
+axis.title = element_blank())
+
+#gene density as a function on chr length
+busco_file %>%
+  filter(chr!="W") %>%
+  group_by(chr) %>%
+  mutate(chr, bin_100kb=cut(start, breaks = seq(0, max(chr_len), 100000))) %>%
+  group_by(taxa, species_name, chr, chr_len, bin_100kb) %>%
+  count() %>%
+  group_by(taxa, species_name, chr, chr_len) %>%
+  summarize(mean_gene_count=mean(n)) %>%
+  
+  ggplot(aes(chr_len/1000000, mean_gene_count)) +
+  geom_point() +
+  #geom_smooth(method = "loess") +
+  geom_smooth(method = "lm", colour="blue") +
+  stat_cor(label.y = 4.5) +
+  xlab(label = "Chromosome length (Mb)") +
+  ylab(label = "BUSCO count per 100kb") +
+  facet_wrap(~species_name, scales = "free_x", ncol = 6) +
+  theme_pubr() +
+  theme(strip.text = element_text(face = "italic"))
+
+ggsave(filename = "../output/gene_counts_chr_length.png",
+       device = "png",
+       height = 10,
+       width = 14)
+
+```
+

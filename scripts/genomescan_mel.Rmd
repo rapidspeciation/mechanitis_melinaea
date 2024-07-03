@@ -1,0 +1,912 @@
+---
+title: "Geneflow"
+author: "Karin Näsvall"
+date: "`r Sys.Date()`"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Geneflow
+
+```{r setup}
+Sys.Date()
+
+
+library(ggplot2)
+library(viridis)
+library(tidyr)
+library(dplyr)
+library(pals)
+library(ggpubr)
+
+cmd_args <- commandArgs(trailingOnly = TRUE)
+
+
+```
+
+```{r data}
+
+genus="Mel"
+
+#read in the result of window based stats 
+scan.df <- read.csv(file = "../../genomescan/input/Scan.Mel.base.minGQ10.PhyloInd.ALL.Fst.Dxy.pi.25000.ALL.csv", sep = ",", header = T)
+
+str(scan.df)
+
+scan_long.df <- pivot_longer(scan.df, cols = c(starts_with("pi"), starts_with("dxy"), starts_with("Fst")), names_sep = "_", names_to = c("statistic", "taxa", "taxa2"), values_to = "value")
+
+scan_long.df$taxa <- paste(scan_long.df$taxa, scan_long.df$taxa2, sep = "_")
+
+scan_long.df$taxa <- sub("_NA", "", scan_long.df$taxa)
+scan_long.df$scaffold <- sprintf("%02s", sub("SUPER_", "", scan_long.df$scaffold))
+scan_long.df[scan_long.df$scaffold=="0Z", "scaffold"] <- "Z"
+
+head(scan_long.df)
+
+#read in file with breakpoint positions
+breakpoint_file <- "../../breakpoints/output/comparisons/Mel/br_all_2024-06-21MelilMelMars1.table"
+syn_blocks_BPR_red <- read.table(breakpoint_file, header = T)
+syn_blocks_BPR_red <- syn_blocks_BPR_red[,c("marker", "br_origin", "chr", "start", "end", "chr_len", "br_start", "br_end", "br_length_corr")]
+
+colnames(syn_blocks_BPR_red)[3] <- "scaffold"
+
+syn_blocks_BPR_red <- 
+syn_blocks_BPR_red %>%
+filter(!is.na(syn_blocks_BPR_red$br_length_corr))
+
+syn_blocks_BPR_red <- 
+syn_blocks_BPR_red %>%
+  mutate(scaffold=sprintf("%02s", scaffold)) %>%
+  mutate(scaffold=sub("^0([A-Z])", "\\1" , scaffold))
+
+#make a data frame with the names of the comparisons in the scan file and the breakpoint file
+#obs check that the order is correct!!
+taxa_sel <- data.frame(cbind(scan_taxa=c( "isocomma_marsaeus","ludovica_marsaeus","menophilus_marsaeus","mothone_marsaeus", "ludovica_isocomma", "isocomma_menophilus","isocomma_mothone","ludovica_menophilus", "ludovica_mothone", "mothone_menophilus"), unique(syn_blocks_BPR_red$br_origin)))
+
+#filter comparisons (divergence) and taxa of interest (diversity)
+scan_long.df <- 
+  scan_long.df %>%
+  filter(taxa %in% c(taxa_sel$scan_taxa,"ludovica", "marsaeus", "isocomma",  "mothone", "menophilus"))
+
+
+shared_ends <- read.table(paste("../output/comparisons/", genus, "/shared_ends_2024-07-01", genus, ".table", sep = ""), header = T)
+
+```
+
+```{r chr_vs_pi}
+#plots chromosome size versus diversity
+sel_taxa = "marsaeus"
+
+ggsave(
+left_join(scan_long.df[scan_long.df$taxa == sel_taxa & scan_long.df$statistic == "pi",],
+          unique(shared_ends[,c("chr", "chr_len")]), by = c("scaffold"="chr")) %>%
+  group_by(scaffold) %>%
+  mutate(mean_pi=mean(value, na.rm = T)) %>%
+  ungroup() %>%
+  select(scaffold, mean_pi, chr_len) %>%
+  unique() %>%
+  ggplot(aes(chr_len/1000000,mean_pi)) +
+  geom_point(size = 3) +
+  stat_cor() +
+  #geom_smooth(method = "lm") 
+  scale_x_continuous(name = "Chromosome length (Mb)") +
+  scale_y_continuous(name = expression("Mean "(pi)),
+                     limits = c(0.005, 0.014)) +
+  theme_pubr(),
+filename = paste("../../genomescan/output/pi_vs_chr_len", sel_taxa, ".pdf"),
+height = 6,
+width = 6)
+
+ggsave(
+left_join(scan_long.df[scan_long.df$taxa == sel_taxa & scan_long.df$statistic == "pi",],
+          unique(shared_ends[,c("chr", "chr_len")]), by = c("scaffold"="chr")) %>%
+  ggplot(aes(as.factor(round(chr_len/1000000,2)),value)) +
+  geom_boxplot() +
+  scale_x_discrete(name = "Chromosome length (Mb)") +
+  scale_y_continuous(name = expression(pi)),
+filename = paste("../../genomescan/output/pi_vs_chr_len", sel_taxa, "boxplot.pdf"),
+height = 6,
+width = 6)
+
+
+
+```
+
+
+```{r plot_breakpoint_region}
+
+#plots scans of fst, dxy and pi, boxplots per chromosome and boxplots of the distribution within and outside breakpoints
+#creates summary tables 
+
+for (i in 1:length(unique(taxa_sel$scan_taxa))){
+
+comp_taxa <- taxa_sel$scan_taxa[i]
+br_taxa <- taxa_sel$V2[i]
+pi_taxa <- unlist(stringr::str_split(comp_taxa, "_"))
+
+colour_breakpoints="blue"
+colour_reg_lines="grey30"
+text_size=16
+line_size=1
+
+
+sel_stat="Fst"
+
+filt_scan_long.df <- 
+scan_long.df %>%
+  filter(statistic==sel_stat) %>%
+  filter(stringr::str_detect(taxa, comp_taxa))
+
+filt_scan_long.df$BPR <- "Absent"
+
+
+for (i in syn_blocks_BPR_red$scaffold) {
+  for (bpr in syn_blocks_BPR_red[syn_blocks_BPR_red$scaffold==i & syn_blocks_BPR_red$br_origin==br_taxa,c("br_start")]) {
+    
+filt_scan_long.df[filt_scan_long.df$scaffold==i & filt_scan_long.df$start < bpr & filt_scan_long.df$end > bpr, "BPR"]="Present"
+filt_scan_long.df[filt_scan_long.df$scaffold==i & filt_scan_long.df$start > bpr & filt_scan_long.df$end < syn_blocks_BPR_red[syn_blocks_BPR_red$scaffold==i & syn_blocks_BPR_red$br_start==bpr,"br_end"], "BPR"]="Present"
+
+  }
+}
+  
+
+
+fst_scan <- 
+filt_scan_long.df %>%
+  ggplot() +
+  geom_vline(data = syn_blocks_BPR_red[syn_blocks_BPR_red$br_origin==br_taxa,], aes(xintercept=br_start/1000000), alpha=0.5, colour=colour_breakpoints, size=line_size) +
+  geom_vline(data = syn_blocks_BPR_red[syn_blocks_BPR_red$br_origin==br_taxa,], aes(xintercept=br_end/1000000), alpha=0.5, colour=colour_breakpoints, size=line_size) +
+  geom_point(aes(mid/1000000, value, colour=scaffold), size=0.5) +
+  #geom_smooth(aes(mid/1000000, value), colour=colour_reg_lines) +
+  geom_point(data=filt_scan_long.df %>% filter(BPR=="Present"), aes(mid/1000000, value), colour= "red", size=1.5) +
+  facet_grid(~scaffold, scales = "free_x", space = "free_x") +
+  scale_y_continuous(limits = c(0,1),
+                     name = expression("F"["ST"])) +
+  scale_x_continuous(expand = c(0,0)) +
+  scale_colour_manual(values = rep(c("black","darkgrey"),8)) +
+  theme_classic() +
+  theme(legend.position = "none",
+        axis.ticks.x = element_blank(),
+        axis.text.x = element_blank(),
+        axis.title.x = element_blank(),
+        axis.title.y = element_text(vjust = 3),
+        text = element_text(size = text_size),
+        panel.spacing = unit(0.1, "lines"),
+        strip.background = element_blank(),
+        strip.text.x = element_blank(),
+        plot.margin = unit(c(5,5,5,14), "pt"))
+
+sum_stat <- filt_scan_long.df %>%
+  group_by(BPR) %>% 
+  summarize(mean_stat=mean(value, na.rm = T), sd_stat=sd(value, na.rm = T), median_stat=median(value, na.rm = T))
+
+
+
+box_fst <- 
+filt_scan_long.df %>%
+  ggplot(aes(BPR, value, fill=BPR)) +
+  geom_boxplot() +
+  #geom_jitter(width = 0.1, colour="grey20") +
+  stat_compare_means(label.x.npc = "left", label.y.npc = 0.95, size = text_size/2.8) +
+  geom_label(data=sum_stat, aes(BPR, median_stat, label=round(mean_stat, 3)), fill="white", size=(text_size-4)/2.8) +
+  labs(y = expression("F"["ST"]),
+       x = "") +
+  scale_fill_manual(name = "Breakpoint region",
+                    values = c("grey", colour_breakpoints)) +
+  scale_y_continuous(limits = c(0,1)) +
+  theme_classic() +
+  theme(text = element_text(size = text_size),
+        axis.text = element_text(size = text_size),
+        legend.position = "none",
+        plot.margin = unit(c(10,5,24,8), "pt"))
+
+
+box_per_chr_fst <- filt_scan_long.df %>%
+  ggplot(aes(scaffold, value)) +
+  geom_boxplot() +
+  #geom_jitter(width = 0.1, colour="grey20") +
+  #stat_compare_means(label.x.npc = "centre") +
+  #geom_label(data=sum_stat, aes(BPR, median_stat, label=round(mean_stat, 3)), fill="white") +
+  labs(y = expression("F"["ST"])) +
+  #scale_fill_manual(name = "Breakpoint region",
+  #                  values = c("grey", colour_breakpoints)) +
+  scale_y_continuous(limits = c(0,1)) +
+  theme_classic() +
+  theme(text = element_text(size = text_size),
+        axis.title.x = element_blank(),
+        axis.text = element_text(size = text_size),
+        legend.position = "none")
+
+sum_stat$taxa <- comp_taxa
+sum_stat$statistic <- sel_stat
+
+p_value_wilcox1 <- 
+filt_scan_long.df %>%
+compare_means(
+  value ~ BPR, data=.,
+  method = "wilcox.test"
+)
+
+sum_stat$p_value <- c(p_value_wilcox1$p, p_value_wilcox1$p)
+sum_stat$p.signif <- c(p_value_wilcox1$p.signif, p_value_wilcox1$p.signif)
+
+
+if (i==1){
+write.table(sum_stat[,c("taxa", "statistic", "BPR", "mean_stat", "sd_stat", "p_value", "p.signif")], row.names = F,col.names = T,
+            file = paste("../../genomescan/output/", genus, "/","sum_fst_dxy.table", sep = ""))
+
+  } else {
+write.table(sum_stat[,c("taxa", "statistic", "BPR", "mean_stat", "sd_stat", "p_value", "p.signif")], row.names = F,col.names = F,
+            file = paste("../../genomescan/output/", genus, "/","sum_fst_dxy.table", sep = ""), append = T)
+
+}
+
+
+
+
+sel_stat="dxy"
+
+filt_scan_long.df <- 
+scan_long.df %>%
+  filter(statistic==sel_stat) %>%
+  filter(stringr::str_detect(taxa, comp_taxa))
+
+filt_scan_long.df$BPR <- "Absent"
+
+for (i in syn_blocks_BPR_red$scaffold) {
+  for (bpr in syn_blocks_BPR_red[syn_blocks_BPR_red$scaffold==i & syn_blocks_BPR_red$br_origin==br_taxa,c("br_start")]) {
+    
+filt_scan_long.df[filt_scan_long.df$scaffold==i & filt_scan_long.df$start < bpr & filt_scan_long.df$end > bpr, "BPR"]="Present"
+filt_scan_long.df[filt_scan_long.df$scaffold==i & filt_scan_long.df$start > bpr & filt_scan_long.df$end < syn_blocks_BPR_red[syn_blocks_BPR_red$scaffold==i & syn_blocks_BPR_red$br_start==bpr,"br_end"], "BPR"]="Present"
+
+  }
+  
+
+}
+
+dxy_scan <- 
+filt_scan_long.df %>%
+  ggplot() +
+  geom_vline(data = syn_blocks_BPR_red[syn_blocks_BPR_red$br_origin==br_taxa,], aes(xintercept=br_start/1000000, linetype=br_origin), alpha=0.5, colour=colour_breakpoints, size=line_size) +
+  geom_vline(data = syn_blocks_BPR_red[syn_blocks_BPR_red$br_origin==br_taxa,], aes(xintercept=br_end/1000000, linetype=br_origin), alpha=0.5, colour=colour_breakpoints, size=line_size) +
+  geom_point(aes(mid/1000000, value, colour=scaffold), size=0.5) +
+  #geom_smooth(aes(mid/1000000, value), colour=colour_reg_lines) +
+  geom_point(data=filt_scan_long.df %>% filter(BPR=="Present"), aes(mid/1000000, value), colour= "red", size=1.5) +
+  facet_grid(~scaffold, scales = "free_x", space = "free_x") +
+  scale_y_continuous(limits = c(0,0.05),
+                     name = expression("D"["XY"])) +
+  scale_x_continuous(expand = c(0,0)) +
+  scale_colour_manual(values = rep(c("black","darkgrey"),8)) +
+  theme_classic() +
+  theme(legend.position = "none",
+        axis.ticks.x = element_blank(),
+        axis.text.x = element_blank(),
+        axis.title.x = element_blank(),
+        axis.title.y = element_text(vjust = 3),
+        text = element_text(size = text_size),
+        panel.spacing = unit(0.1, "lines"),
+        strip.background = element_blank(),
+        strip.text.x = element_blank(),
+        plot.margin = unit(c(5,5,5,14), "pt"))
+
+sum_stat <- filt_scan_long.df %>%
+  group_by(BPR) %>% 
+  summarize(mean_stat=mean(value, na.rm = T), sd_stat=sd(value, na.rm = T), median_stat=median(value, na.rm = T))
+
+box_dxy <- 
+filt_scan_long.df %>%
+  ggplot(aes(BPR, value, fill=BPR)) +
+  geom_boxplot() +
+  #geom_jitter(width = 0.1, colour="grey30", size=0.5, alpha=0.5) +
+  stat_compare_means(label.x.npc = "left", label.y.npc = 0.95, size = text_size/2.8) +
+  geom_label(data=sum_stat, aes(BPR, median_stat, label=round(mean_stat, 3)), fill="white", size=(text_size-4)/2.8) +
+  labs(y = expression("D"["XY"]),
+       x="Breakpoints in 20kb windows") +
+  scale_y_continuous(limits = c(0, 0.05)) +
+  scale_fill_manual(name = "Breakpoint region",
+                    values = c("grey", colour_breakpoints)) +
+  theme_classic() +
+  theme(text = element_text(size = text_size),
+        axis.text = element_text(size = text_size),
+        axis.title.x = element_text(size = text_size, vjust = -1),
+        legend.position = "none",
+        plot.margin = unit(c(10,5,24,5), "pt"))
+
+box_per_chr_dxy <- filt_scan_long.df %>%
+  ggplot(aes(scaffold, value)) +
+  geom_boxplot() +
+  #geom_jitter(width = 0.1, colour="grey20") +
+  #stat_compare_means(label.x.npc = "centre") +
+  #geom_label(data=sum_stat, aes(BPR, median_stat, label=round(mean_stat, 3)), fill="white") +
+  labs(y = expression("D"["XY"])) +
+  #scale_fill_manual(name = "Breakpoint region",
+  #                  values = c("grey", colour_breakpoints)) +
+  #scale_y_continuous(limits = c(0,1)) +
+  theme_classic() +
+  theme(text = element_text(size = text_size),
+        axis.title.x = element_blank(),
+        axis.text = element_text(size = text_size),
+        legend.position = "none")
+
+sum_stat$taxa <- comp_taxa
+sum_stat$statistic <- sel_stat
+sum_stat$comp <- comp_taxa
+
+p_value_wilcox1 <- 
+filt_scan_long.df %>%
+compare_means(
+  value ~ BPR, data=.,
+  method = "wilcox.test"
+)
+
+sum_stat$p_value <- c(p_value_wilcox1$p, p_value_wilcox1$p)
+sum_stat$p.signif <- c(p_value_wilcox1$p.signif, p_value_wilcox1$p.signif)
+
+write.table(sum_stat[,c("taxa", "statistic", "BPR","mean_stat","sd_stat", "p_value", "p.signif")], row.names = F,col.names = F,
+            file = paste("../../genomescan/output/", genus, "/","sum_fst_dxy.table", sep = ""), append = T)
+
+
+
+
+
+sel_stat="pi"
+
+filt_scan_long.df <- 
+scan_long.df %>%
+  filter(statistic==sel_stat) %>%
+  filter(taxa %in% pi_taxa)
+
+filt_scan_long.df$BPR <- "Absent"
+
+for (i in syn_blocks_BPR_red$scaffold) {
+  for (bpr in syn_blocks_BPR_red[syn_blocks_BPR_red$scaffold==i & syn_blocks_BPR_red$br_origin==br_taxa,c("br_start")]) {
+    
+filt_scan_long.df[filt_scan_long.df$scaffold==i & filt_scan_long.df$start < bpr & filt_scan_long.df$end > bpr, "BPR"]="Present"
+filt_scan_long.df[filt_scan_long.df$scaffold==i & filt_scan_long.df$start > bpr & filt_scan_long.df$end < syn_blocks_BPR_red[syn_blocks_BPR_red$scaffold==i & syn_blocks_BPR_red$br_start==bpr,"br_end"], "BPR"]="Present"
+
+  }
+  
+
+}
+
+#change names for plot
+filt_scan_long.df$taxa <- paste(paste(genus, ".", sep = ""), filt_scan_long.df$taxa)
+
+pi_scan <- 
+filt_scan_long.df %>%
+  ggplot() +
+  geom_vline(data = syn_blocks_BPR_red[syn_blocks_BPR_red$br_origin==br_taxa,], aes(xintercept=br_start/1000000), alpha=0.5, colour=colour_breakpoints, size=line_size) +
+  geom_vline(data = syn_blocks_BPR_red[syn_blocks_BPR_red$br_origin==br_taxa,], aes(xintercept=br_end/1000000), alpha=0.5, colour=colour_breakpoints, size=line_size) +
+  geom_point(aes(mid/1000000, value, colour=scaffold), size=0.5) +
+  #geom_smooth(aes(mid/1000000, value), colour=colour_reg_lines) +
+  geom_point(data=filt_scan_long.df %>% filter(BPR=="Present"), aes(mid/1000000, value), colour= "red", size=1.5) +
+  facet_grid(rows = vars(taxa), cols = vars(scaffold), scales = "free_x", space = "free_x", switch = "both") +
+  scale_y_continuous(limits = c(0,max(filt_scan_long.df$value, na.rm = T)*1.2),
+                     name = expression(pi)) +
+  scale_x_continuous(name = "Chromosome",
+                     expand = c(0,0)) +
+  scale_colour_manual(values = rep(c("black","darkgrey"),8)) +
+  theme_classic() +
+  theme(legend.position = "none",
+        axis.ticks.x = element_blank(),
+        axis.text.x = element_blank(),
+        axis.title.x = element_text(vjust = -1),
+        axis.title.y = element_text(vjust = -2),
+        text = element_text(size = text_size),
+        panel.spacing = unit(0.1, "lines"),
+        strip.placement = "outside",
+        strip.text.y = element_text(size=text_size-3, face = "italic"),
+        strip.text.x = element_text(size=text_size),
+        strip.background.y = element_blank(),
+        plot.margin = unit(c(5,5,10,0), "pt"),
+        strip.switch.pad.grid = unit(0, "cm"))
+
+
+sum_stat <- filt_scan_long.df %>%
+  group_by(BPR, taxa) %>% 
+  summarize(mean_stat=mean(value, na.rm = T), sd_stat=sd(value, na.rm = T), median_stat=median(value, na.rm = T))
+
+box_pi <- 
+filt_scan_long.df %>%
+  ggplot(aes(BPR, value, fill=BPR)) +
+  geom_boxplot() +
+  #geom_jitter(width = 0.1, colour="grey20") +
+  stat_compare_means(label.x.npc = "left", label.y.npc = 0.95, size = text_size/2.8) +
+  geom_label(data=sum_stat, aes(BPR, median_stat, label=round(mean_stat, 4)), fill="white", size=(text_size-4)/2.8) +
+  labs(y = expression(pi),
+       x="") +
+  scale_fill_manual(name = "Breakpoint region",
+                    values = c("grey", colour_breakpoints)) +
+  scale_y_continuous(limits=c(0, max(filt_scan_long.df$value, na.rm = T)*1.2)) +
+  facet_wrap(~taxa, switch = "x") +
+  theme_classic() +
+  theme(text = element_text(size = text_size),
+        axis.text = element_text(size = text_size),
+        legend.position = "none",
+        strip.placement = "outside",
+        strip.background = element_blank(),
+        strip.text = element_text(size=text_size, face = "italic"),
+        plot.margin = unit(c(10,5,0,5), "pt"))
+
+
+box_per_chr_pi <- filt_scan_long.df %>%
+  ggplot(aes(scaffold, value)) +
+  geom_boxplot() +
+  #geom_jitter(width = 0.1, colour="grey20") +
+  #stat_compare_means(label.x.npc = "centre") +
+  #geom_label(data=sum_stat, aes(BPR, median_stat, label=round(mean_stat, 3)), fill="white") +
+  labs(y = expression(pi)) +
+  #scale_fill_manual(name = "Breakpoint region",
+  #                  values = c("grey", colour_breakpoints)) +
+ # scale_y_continuous(limits = c(0,1)) +
+  facet_wrap(~taxa, ncol = 1) +
+  theme_classic() +
+  theme(text = element_text(size = text_size),
+        axis.title.x = element_blank(),
+        axis.text = element_text(size = text_size),
+        legend.position = "none")
+
+sum_stat$statistic <- sel_stat
+sum_stat$comp <- comp_taxa
+
+p_value_wilcox1 <- 
+filt_scan_long.df %>%
+  filter(taxa==paste(paste(genus, ".", sep = ""), pi_taxa[1])) %>%
+compare_means(
+  value ~ BPR, data=.,
+  method = "wilcox.test"
+)
+
+p_value_wilcox2 <- 
+filt_scan_long.df %>%
+  filter(taxa==paste(paste(genus, ".", sep = ""), pi_taxa[2])) %>%
+compare_means(
+  value ~ BPR, data=.,
+  method = "wilcox.test"
+)
+
+sum_stat$p_value <- c(p_value_wilcox1$p, p_value_wilcox2$p, p_value_wilcox1$p, p_value_wilcox2$p)
+sum_stat$p.signif <- c(p_value_wilcox1$p.signif, p_value_wilcox2$p.signif, p_value_wilcox1$p.signif, p_value_wilcox2$p.signif)
+
+
+
+if (i==1){
+write.table(sum_stat[,c("comp", "taxa", "statistic", "BPR", "mean_stat", "sd_stat", "p_value", "p.signif")], row.names = F,col.names = T,
+            file = paste("../../genomescan/output/", genus, "/","sum_pi.table", sep = ""))
+
+  } else {
+write.table(sum_stat[,c("comp", "taxa", "statistic", "BPR", "mean_stat", "sd_stat", "p_value", "p.signif")], row.names = F,col.names = F,
+            file = paste("../../genomescan/output/", genus, "/","sum_pi.table", sep = ""), append = T)
+
+}
+
+
+
+ggsave(
+ggarrange(fst_scan, dxy_scan, pi_scan,
+          ggarrange(box_fst, box_dxy, box_pi,
+                    nrow = 1, align = "v"),
+          nrow = 4, heights = c(1,1,2,2), labels = c("A", "", "", "B"), font.label = list(size=24, face="plain", family="Calibri")),
+filename=paste("../../genomescan/output/", genus, "/", comp_taxa, "_fst_dxy_pi_", Sys.Date(), ".png", sep = ""),
+height = 12,
+width = 18
+)
+
+ggsave(
+ggarrange(box_per_chr_fst, box_per_chr_dxy, box_per_chr_pi, ncol = 1, heights = c(1,1,2), align = "v"),
+filename=paste("../../genomescan/output/", genus, "/", comp_taxa, "_per_chr", Sys.Date(), ".png", sep = ""),
+height = 12,
+width = 18
+)
+
+}
+
+
+```
+
+
+```{r plot_shared_end}
+
+#set up table to write the results 
+#for (i in 1:length(unique(taxa_sel$scan_taxa))){
+for (i in 6:10){
+
+
+
+comp_taxa <- taxa_sel$scan_taxa[i]
+br_taxa <- taxa_sel$V2[i]
+pi_taxa <- unlist(stringr::str_split(comp_taxa, "_"))
+
+colour_breakpoints="blue"
+colour_reg_lines="grey30"
+text_size=16
+line_size=1
+
+
+sel_stat="Fst"
+
+filt_scan_long.df <- 
+scan_long.df %>%
+  filter(statistic==sel_stat) %>%
+  filter(stringr::str_detect(taxa, comp_taxa))
+
+filt_scan_long.df$BPR <- "Absent"
+filt_scan_long.df$shared_end <- "Absent"
+
+for (i in shared_ends$chr) {
+  
+  for (bpr in shared_ends[shared_ends$chr==i & shared_ends$comp==br_taxa,c("end_start")]) {
+
+filt_scan_long.df[filt_scan_long.df$scaffold==i & filt_scan_long.df$start < bpr & filt_scan_long.df$end > bpr, "shared_end"]="Present"
+filt_scan_long.df[filt_scan_long.df$scaffold==i & filt_scan_long.df$start > bpr & filt_scan_long.df$end < shared_ends[shared_ends$chr==i & shared_ends$end_start==bpr,"end_end"], "shared_end"]="Present"
+
+  }
+}
+
+
+fst_scan <- 
+filt_scan_long.df %>%
+  ggplot() +
+  geom_point(aes(mid/1000000, value, colour=scaffold), size=0.5) +
+  #geom_smooth(aes(mid/1000000, value), colour=colour_reg_lines) +
+  geom_point(data=filt_scan_long.df %>% filter(shared_end=="Present"), aes(mid/1000000, value), colour= "red", size=1.5) +
+  facet_grid(~scaffold, scales = "free_x", space = "free_x") +
+  scale_y_continuous(limits = c(0,1),
+                     name = expression("F"["ST"])) +
+  scale_x_continuous(expand = c(0,0)) +
+  scale_colour_manual(values = rep(c("black","darkgrey"),8)) +
+  theme_classic() +
+  theme(legend.position = "none",
+        axis.ticks.x = element_blank(),
+        axis.text.x = element_blank(),
+        axis.title.x = element_blank(),
+        axis.title.y = element_text(vjust = 3),
+        text = element_text(size = text_size),
+        panel.spacing = unit(0.1, "lines"),
+        strip.background = element_blank(),
+        strip.text.x = element_blank(),
+        plot.margin = unit(c(5,5,5,14), "pt"))
+
+sum_stat <- filt_scan_long.df %>%
+  group_by(shared_end) %>% 
+  summarize(mean_stat=mean(value, na.rm = T), sd_stat=sd(value, na.rm = T), median_stat=median(value, na.rm = T))
+
+
+
+box_fst <- 
+filt_scan_long.df %>%
+  ggplot(aes(shared_end, value, fill=shared_end)) +
+  geom_boxplot() +
+  #geom_jitter(width = 0.1, colour="grey20") +
+  stat_compare_means(label.x.npc = "left", label.y.npc = 0.95, size = text_size/2.8) +
+  geom_label(data=sum_stat, aes(shared_end, median_stat, label=round(mean_stat, 3)), fill="white", size=(text_size-4)/2.8) +
+  labs(y = expression("F"["ST"]),
+       x = "") +
+  scale_fill_manual(name = "Shared chromosome ends",
+                    values = c("grey", colour_breakpoints)) +
+  scale_y_continuous(limits = c(0,1)) +
+  theme_classic() +
+  theme(text = element_text(size = text_size),
+        axis.text = element_text(size = text_size),
+        legend.position = "none",
+        plot.margin = unit(c(10,5,24,8), "pt"))
+
+
+sum_stat$taxa <- comp_taxa
+sum_stat$statistic <- sel_stat
+
+p_value_wilcox1 <- 
+filt_scan_long.df %>%
+compare_means(
+  value ~ shared_end, data=.,
+  method = "wilcox.test"
+)
+
+sum_stat$p_value <- c(p_value_wilcox1$p, p_value_wilcox1$p)
+sum_stat$p.signif <- c(p_value_wilcox1$p.signif, p_value_wilcox1$p.signif)
+
+
+if (i==1){
+write.table(sum_stat[,c("taxa", "statistic", "shared_end", "mean_stat", "sd_stat", "p_value", "p.signif")], row.names = F,col.names = T,
+            file = paste("../../genomescan/output/", genus, "/","sum_fst_dxy_shared_end.table", sep = ""))
+
+  } else {
+write.table(sum_stat[,c("taxa", "statistic", "shared_end", "mean_stat", "sd_stat", "p_value", "p.signif")], row.names = F,col.names = F,
+            file = paste("../../genomescan/output/", genus, "/","sum_fst_dxy_shared_end.table", sep = ""), append = T)
+
+}
+
+
+
+
+sel_stat="dxy"
+
+filt_scan_long.df <- 
+scan_long.df %>%
+  filter(statistic==sel_stat) %>%
+  filter(stringr::str_detect(taxa, comp_taxa))
+
+filt_scan_long.df$BPR <- "Absent"
+filt_scan_long.df$shared_end <- "Absent"
+
+for (i in shared_ends$chr) {
+  
+  for (bpr in shared_ends[shared_ends$chr==i & shared_ends$comp==br_taxa,c("end_start")]) {
+
+filt_scan_long.df[filt_scan_long.df$scaffold==i & filt_scan_long.df$start < bpr & filt_scan_long.df$end > bpr, "shared_end"]="Present"
+filt_scan_long.df[filt_scan_long.df$scaffold==i & filt_scan_long.df$start > bpr & filt_scan_long.df$end < shared_ends[shared_ends$chr==i & shared_ends$end_start==bpr,"end_end"], "shared_end"]="Present"
+
+  }
+
+}
+
+dxy_scan <- 
+filt_scan_long.df %>%
+  ggplot() +
+  geom_point(aes(mid/1000000, value, colour=scaffold), size=0.5) +
+  #geom_smooth(aes(mid/1000000, value), colour=colour_reg_lines) +
+  geom_point(data=filt_scan_long.df %>% filter(shared_end=="Present"), aes(mid/1000000, value), colour= "red", size=1.5) +
+  facet_grid(~scaffold, scales = "free_x", space = "free_x") +
+  scale_y_continuous(limits = c(0,0.05),
+                     name = expression("D"["XY"])) +
+  scale_x_continuous(expand = c(0,0)) +
+  scale_colour_manual(values = rep(c("black","darkgrey"),8)) +
+  theme_classic() +
+  theme(legend.position = "none",
+        axis.ticks.x = element_blank(),
+        axis.text.x = element_blank(),
+        axis.title.x = element_blank(),
+        axis.title.y = element_text(vjust = 3),
+        text = element_text(size = text_size),
+        panel.spacing = unit(0.1, "lines"),
+        strip.background = element_blank(),
+        strip.text.x = element_blank(),
+        plot.margin = unit(c(5,5,5,14), "pt"))
+
+sum_stat <- filt_scan_long.df %>%
+  group_by(shared_end) %>% 
+  summarize(mean_stat=mean(value, na.rm = T), sd_stat=sd(value, na.rm = T), median_stat=median(value, na.rm = T))
+
+box_dxy <- 
+filt_scan_long.df %>%
+  ggplot(aes(shared_end, value, fill=shared_end)) +
+  geom_boxplot() +
+  #geom_jitter(width = 0.1, colour="grey30", size=0.5, alpha=0.5) +
+  stat_compare_means(label.x.npc = "left", label.y.npc = 0.95, size = text_size/2.8) +
+  geom_label(data=sum_stat, aes(shared_end, median_stat, label=round(mean_stat, 3)), fill="white", size=(text_size-4)/2.8) +
+  labs(y = expression("D"["XY"]),
+       x="Shared chromosome ends") +
+  scale_y_continuous(limits = c(0, 0.05)) +
+  scale_fill_manual(name = "Breakpoint region",
+                    values = c("grey", colour_breakpoints)) +
+  theme_classic() +
+  theme(text = element_text(size = text_size),
+        axis.text = element_text(size = text_size),
+        axis.title.x = element_text(size = text_size, vjust = -1),
+        legend.position = "none",
+        plot.margin = unit(c(10,5,24,5), "pt"))
+
+box_per_chr_dxy <- filt_scan_long.df %>%
+  ggplot(aes(scaffold, value)) +
+  geom_boxplot() +
+  #geom_jitter(width = 0.1, colour="grey20") +
+  #stat_compare_means(label.x.npc = "centre") +
+  #geom_label(data=sum_stat, aes(BPR, median_stat, label=round(mean_stat, 3)), fill="white") +
+  labs(y = expression("D"["XY"])) +
+  #scale_fill_manual(name = "Breakpoint region",
+  #                  values = c("grey", colour_breakpoints)) +
+  #scale_y_continuous(limits = c(0,1)) +
+  theme_classic() +
+  theme(text = element_text(size = text_size),
+        axis.title.x = element_blank(),
+        axis.text = element_text(size = text_size),
+        legend.position = "none")
+
+
+sum_stat$taxa <- comp_taxa
+sum_stat$statistic <- sel_stat
+
+p_value_wilcox1 <- 
+filt_scan_long.df %>%
+compare_means(
+  value ~ shared_end, data=.,
+  method = "wilcox.test"
+)
+
+sum_stat$p_value <- c(p_value_wilcox1$p, p_value_wilcox1$p)
+sum_stat$p.signif <- c(p_value_wilcox1$p.signif, p_value_wilcox1$p.signif)
+
+if (i==1){
+write.table(sum_stat[,c("taxa", "statistic", "shared_end", "mean_stat", "sd_stat", "p_value", "p.signif")], row.names = F,col.names = T,
+            file = paste("../../genomescan/output/", genus, "/","sum_fst_dxy_shared_end.table", sep = ""))
+
+  } else {
+write.table(sum_stat[,c("taxa", "statistic", "shared_end", "mean_stat", "sd_stat", "p_value", "p.signif")], row.names = F,col.names = F,
+            file = paste("../../genomescan/output/", genus, "/","sum_fst_dxy_shared_end.table", sep = ""), append = T)
+
+}
+
+
+
+
+sel_stat="pi"
+
+filt_scan_long.df <- 
+scan_long.df %>%
+  filter(statistic==sel_stat) %>%
+  filter(taxa %in% pi_taxa)
+
+filt_scan_long.df$BPR <- "Absent"
+filt_scan_long.df$shared_end <- "Absent"
+
+for (i in shared_ends$chr) {
+
+    for (bpr in shared_ends[shared_ends$chr==i & shared_ends$comp==br_taxa,c("end_start")]) {
+    
+filt_scan_long.df[filt_scan_long.df$scaffold==i & filt_scan_long.df$start < bpr & filt_scan_long.df$end > bpr, "shared_end"]="Present"
+filt_scan_long.df[filt_scan_long.df$scaffold==i & filt_scan_long.df$start > bpr & filt_scan_long.df$end < shared_ends[shared_ends$chr==i & shared_ends$end_start==bpr,"end_end"], "shared_end"]="Present"
+
+  }
+
+}
+
+#change names for plot
+filt_scan_long.df$taxa <- paste(paste(genus, ".", sep = ""), filt_scan_long.df$taxa)
+
+pi_scan <- 
+filt_scan_long.df %>%
+  ggplot() +
+  geom_point(aes(mid/1000000, value, colour=scaffold), size=0.5) +
+  #geom_smooth(aes(mid/1000000, value), colour=colour_reg_lines) +
+  geom_point(data=filt_scan_long.df %>% filter(shared_end=="Present"), aes(mid/1000000, value), colour= "red", size=1.5) +
+  facet_grid(rows = vars(taxa), cols = vars(scaffold), scales = "free_x", space = "free_x", switch = "both") +
+  scale_y_continuous(limits = c(0,max(filt_scan_long.df$value, na.rm = T)*1.2),
+                     name = expression(pi)) +
+  scale_x_continuous(name = "Chromosome",
+                     expand = c(0,0)) +
+  scale_colour_manual(values = rep(c("black","darkgrey"),8)) +
+  theme_classic() +
+  theme(legend.position = "none",
+        axis.ticks.x = element_blank(),
+        axis.text.x = element_blank(),
+        axis.title.x = element_text(vjust = -1),
+        axis.title.y = element_text(vjust = -2),
+        text = element_text(size = text_size),
+        panel.spacing = unit(0.1, "lines"),
+        strip.placement = "outside",
+        strip.text.y = element_text(size=text_size-3, face = "italic"),
+        strip.text.x = element_text(size=text_size),
+        strip.background.y = element_blank(),
+        plot.margin = unit(c(5,5,10,0), "pt"),
+        strip.switch.pad.grid = unit(0, "cm"))
+
+
+sum_stat <- filt_scan_long.df %>%
+  group_by(shared_end, taxa) %>% 
+  summarize(mean_stat=mean(value, na.rm = T), sd_stat=sd(value, na.rm = T), median_stat=median(value, na.rm = T))
+
+box_pi <- 
+filt_scan_long.df %>%
+  ggplot(aes(shared_end, value, fill=shared_end)) +
+  geom_boxplot() +
+  #geom_jitter(width = 0.1, colour="grey20") +
+  stat_compare_means(label.x.npc = "left", label.y.npc = 0.95, size = text_size/2.8) +
+  geom_label(data=sum_stat, aes(shared_end, median_stat, label=round(mean_stat, 4)), fill="white", size=(text_size-4)/2.8) +
+  labs(y = expression(pi),
+       x="") +
+  scale_fill_manual(name = "Breakpoint region",
+                    values = c("grey", colour_breakpoints)) +
+  scale_y_continuous(limits=c(0, max(filt_scan_long.df$value, na.rm = T)*1.2)) +
+  facet_wrap(~taxa, switch = "x") +
+  theme_classic() +
+  theme(text = element_text(size = text_size),
+        axis.text = element_text(size = text_size),
+        legend.position = "none",
+        strip.placement = "outside",
+        strip.background = element_blank(),
+        strip.text = element_text(size=text_size, face = "italic"),
+        plot.margin = unit(c(10,5,0,5), "pt"))
+
+
+
+sum_stat$statistic <- sel_stat
+sum_stat$comp <- comp_taxa
+
+p_value_wilcox1 <- 
+filt_scan_long.df %>%
+  filter(taxa==paste(paste(genus, ".", sep = ""), pi_taxa[1])) %>%
+compare_means(
+  value ~ shared_end, data=.,
+  method = "wilcox.test"
+)
+
+p_value_wilcox2 <- 
+filt_scan_long.df %>%
+  filter(taxa==paste(paste(genus, ".", sep = ""), pi_taxa[2])) %>%
+compare_means(
+  value ~ shared_end, data=.,
+  method = "wilcox.test"
+)
+
+sum_stat$p_value <- c(p_value_wilcox1$p, p_value_wilcox2$p, p_value_wilcox1$p, p_value_wilcox2$p)
+sum_stat$p.signif <- c(p_value_wilcox1$p.signif, p_value_wilcox2$p.signif, p_value_wilcox1$p.signif, p_value_wilcox2$p.signif)
+
+
+
+if (i==1){
+write.table(sum_stat[,c("comp", "taxa", "statistic", "shared_end", "mean_stat", "sd_stat", "p_value", "p.signif")], row.names = F,col.names = T,
+            file = paste("../../genomescan/output/", genus, "/","sum_pi_shared_end.table", sep = ""))
+
+  } else {
+write.table(sum_stat[,c("comp", "taxa", "statistic", "shared_end", "mean_stat", "sd_stat", "p_value", "p.signif")], row.names = F,col.names = F,
+            file = paste("../../genomescan/output/", genus, "/","sum_pi_shared_end.table", sep = ""), append = T)
+
+}
+
+
+
+
+ggsave(
+ggarrange(fst_scan, dxy_scan, pi_scan,
+          ggarrange(box_fst, box_dxy, box_pi,
+                    nrow = 1, align = "v"),
+          nrow = 4, heights = c(1,1,2,2), labels = c("B", "", "", "C"), font.label = list(size=24, face="plain", family="Calibri")),
+filename=paste("../../genomescan/output/", genus, "/", comp_taxa, "_fst_dxy_pi_shared_end", Sys.Date(), ".png", sep = ""),
+height = 12,
+width = 18
+)
+
+
+}
+
+
+```
+
+
+
+```{r table}
+
+#refine table
+sum_table <- read.table(file = paste("../../genomescan/output/", genus, "/","sum_fst_dxy.table", sep = ""))
+
+colnames(sum_table) <- c("taxa", "statistic", "BPR", "mean_stat", "sd_stat", "p_value", "p.signif")
+
+write.table(cbind(pivot_wider(sum_table[sum_table$statistic=="Fst",], names_from = c("statistic","BPR"), values_from = c("mean_stat", "sd_stat", "p_value", "p.signif")),
+                  pivot_wider(sum_table[sum_table$statistic=="dxy",], names_from = c("statistic","BPR"), values_from = c("mean_stat", "sd_stat", "p_value", "p.signif"))
+            ), sep = ",", row.names = F,
+            file = paste("../../genomescan/output/", genus, "/","sum_fst_dxy.csv", sep = ""))
+
+sum_table_pi <- read.table(file = paste("../../genomescan/output/", genus, "/","sum_pi.table", sep = ""))
+colnames(sum_table_pi) <- c("comp", "taxa", "statistic", "BPR", "mean_stat", "sd_stat", "p_value", "p.signif")
+
+write.table(pivot_wider(sum_table_pi, names_from = c("statistic","BPR"), 
+                        values_from = c("mean_stat", "sd_stat", "p_value", "p.signif")),
+            row.names = F,
+            file = paste("../../genomescan/output/", genus, "/","sum_pi.csv", sep = ""))
+
+```
+
+
+```{r table}
+
+#refine table
+sum_table <- read.table(file = paste("../../genomescan/output/", genus, "/","sum_fst_dxy_shared_end.table", sep = ""))
+
+colnames(sum_table) <- c("taxa", "statistic", "shared_end", "mean_stat", "sd_stat", "p_value", "p.signif")
+
+write.table(cbind(pivot_wider(sum_table[sum_table$statistic=="Fst",], names_from = c("statistic","shared_end"), values_from = c("mean_stat", "sd_stat", "p_value", "p.signif")),
+                  pivot_wider(sum_table[sum_table$statistic=="dxy",], names_from = c("statistic","shared_end"), values_from = c("mean_stat", "sd_stat", "p_value", "p.signif"))
+            ), sep = ",", row.names = F,
+            file = paste("../../genomescan/output/", genus, "/","sum_fst_dxy_shared_end.csv", sep = ""))
+
+sum_table_pi <- read.table(file = paste("../../genomescan/output/", genus, "/","sum_pi_shared_end.table", sep = ""))
+colnames(sum_table_pi) <- c("comp", "taxa", "statistic", "shared_end", "mean_stat", "sd_stat", "p_value", "p.signif")
+
+write.table(pivot_wider(sum_table_pi, names_from = c("statistic","shared_end"), 
+                        values_from = c("mean_stat", "sd_stat", "p_value", "p.signif")),
+            row.names = F,
+            file = paste("../../genomescan/output/", genus, "/","sum_pi_shared_end.csv", sep = ""))
+```

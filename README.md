@@ -18,7 +18,6 @@
 - [R script to filter BUSCO output](https://github.com/rapidspeciation/mechanitis_melinaea/tree/main/scripts/filter_busco_output.R)
 - [R script for preliminary synteny ribbon plot](https://github.com/rapidspeciation/mechanitis_melinaea/tree/main/scripts/plot_synteny.R)
 - [R script for refined synteny ribbon plot](https://github.com/rapidspeciation/mechanitis_melinaea/tree/main/scripts/plot_synteny_fine_tuning.R)
-
 - [R script to calculate and plot rearrangements](https://github.com/rapidspeciation/mechanitis_melinaea/tree/main/scripts/rearrangement_stats.Rmd)
 - [R script to detect breakpoints in Mechanitis and Melinaea](https://github.com/rapidspeciation/mechanitis_melinaea/tree/main/scripts/breakpoints.Rmd)
 - [R script to plot genomescans with breakpoints and boxplots Mech](https://github.com/rapidspeciation/mechanitis_melinaea/tree/main/scripts/genomescan_mec.Rmd)
