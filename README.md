@@ -10,9 +10,7 @@
 **Figure 3:**
 - [Bash script to generate the genome scans with PBS and fd](https://github.com/rapidspeciation/mechanitis_melinaea/tree/main/scripts/nesaea_introgression_PBS.sh)
 - [R script to plot the genome scans](https://github.com/rapidspeciation/mechanitis_melinaea/tree/main/Rscript_Mech.nesaea.r)
-- [Fst and Dxy values](https://github.com/rapidspeciation/mechanitis_melinaea/tree/main/scripts/Mechanitis.nesaea.filtered.2000.Fst.Dxy.pi.csv)
-- [introgression values for Mech. neseaea - Mech. lysimnia](https://github.com/rapidspeciation/mechanitis_melinaea/tree/main/scripts/Mechanitis.nesaea.filtered.2000.fd.polBr_nes_lysBr_mess.csv)
-- [PBS values for Mech. nesaea vs sympatric and allopatric Mech. polymnia](https://github.com/rapidspeciation/mechanitis_melinaea/tree/main/scripts/polW_polB_nes.pbs)
+- Underlying data: [Fst and Dxy values](https://github.com/rapidspeciation/mechanitis_melinaea/tree/main/input/Mechanitis.nesaea.filtered.2000.Fst.Dxy.pi.csv), [introgression values for Mech. neseaea - Mech. lysimnia](https://github.com/rapidspeciation/mechanitis_melinaea/tree/main/input/Mechanitis.nesaea.filtered.2000.fd.polBr_nes_lysBr_mess.csv) and [PBS values for Mech. nesaea vs sympatric and allopatric Mech. polymnia](https://github.com/rapidspeciation/mechanitis_melinaea/tree/main/input/polW_polB_nes.pbs)
 
 **Figure 4:**
 - [R script to filter BUSCO output](https://github.com/rapidspeciation/mechanitis_melinaea/tree/main/scripts/filter_busco_output.R)
