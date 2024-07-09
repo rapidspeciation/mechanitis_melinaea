@@ -14,9 +14,9 @@ pal <- c("#000000","#004949","#009292","#24ff24",
 palette_check(pal, plot = TRUE)
 palette_dist(pal, cvd="deu")
 
-# Read in the trees to compare 
-mel<-read.tree("PhD/R-scripts/Melanitis/trees/Phylo.Mel.base.thin500.minGQ10.PhyloInd.ALL.GTR.wB.treefile.renamed")
-mel_mt<-read.tree("PhD/R-scripts/Melanitis/trees/Phylo.Mel.base.minGQ10.PhyloInd.MT.GTR.wB.treefile.renamed")
+# Read in the trees to compare #note: the tip-labels have been renamed to include species and location of the individuals to aid the plotting
+mel<-read.tree("~/Phylo.Mel.base.thin500.minGQ10.PhyloInd.ALL.GTR.wB.treefile.renamed")
+mel_mt<-read.tree("~/Phylo.Mel.base.minGQ10.PhyloInd.MT.GTR.wB.treefile.renamed")
 
 mel <- root(mel,c("CAM072004_outgroup_Ecuador-East","FS50864856_outgroup_Ecuador-West"))
 mel_mt <- root(mel_mt,c("CAM072004_outgroup_Ecuador-East","FS50864856_outgroup_Ecuador-West"))
@@ -121,9 +121,9 @@ legend("bottomright",legend=c("Eutresis/Olyras","Mel. ludovica","Mel. lilis","Me
 ##### Mechanitis ####
 
 #### Read in the data ####
-# PhyloInd
-mech_mt<-read.tree("PhD/R-scripts/Melanitis/trees/Phylo.Mech.base.minGQ10.MT.PhyloInd.wB.treefile.renamed")
-mech<-read.tree("PhD/R-scripts/Melanitis/trees/Phylo.Mech.base.thin500.minGQ10.PhyloInd.ALL.wB.treefile.renamed")
+# #note: the tip-labels have been renamed to include species and location of the individuals to aid the plotting
+mech_mt<-read.tree("~/Phylo.Mech.base.minGQ10.MT.PhyloInd.wB.treefile.renamed")
+mech<-read.tree("~/Phylo.Mech.base.thin500.minGQ10.PhyloInd.ALL.wB.treefile.renamed")
 
 # Root Mechanitis on Forbestra
 mech <- midpoint.root(mech)
