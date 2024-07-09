@@ -11,6 +11,8 @@
 **Figure 2:**
 - [Calibrated tree](https://github.com/rapidspeciation/mechanitis_melinaea/blob/main/scripts/phylogenetics)
 - [R script to plot the distribution maps](https://github.com/rapidspeciation/mechanitis_melinaea/blob/main/scripts/distribution_maps.R)
+- [DSuite analysis](https://github.com/rapidspeciation/mechanitis_melinaea/blob/main/scripts/DSuite.sh)
+- [TWISST and WindowTree concordance factor](https://github.com/rapidspeciation/mechanitis_melinaea/blob/main/scripts/WindowTree%2BTWISST.sh)
 
 **Figure 3:**
 - [Bash script to generate the genome scans with PBS and fd](https://github.com/rapidspeciation/mechanitis_melinaea/tree/main/scripts/nesaea_introgression_PBS.sh)
