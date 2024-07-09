@@ -5,10 +5,12 @@
 - [Snakemake file 2](https://github.com/rapidspeciation/mechanitis_melinaea/blob/main/scripts/snakefile%20step2)
 
 **Figure 1:**
--[Nuclear and mitochondrial phylogenetic tree](https://github.com/rapidspeciation/mechanitis_melinaea/blob/main/scripts/phylogenetics)
+- [Nuclear and mitochondrial phylogenetic tree](https://github.com/rapidspeciation/mechanitis_melinaea/blob/main/scripts/phylogenetics)
+- [R script to plot the co-phylogeny](https://github.com/rapidspeciation/mechanitis_melinaea/blob/main/scripts/cophylo%20plot.R)
 
 **Figure 2:**
--[Calibrated tree](https://github.com/rapidspeciation/mechanitis_melinaea/blob/main/scripts/phylogenetics)
+- [Calibrated tree](https://github.com/rapidspeciation/mechanitis_melinaea/blob/main/scripts/phylogenetics)
+- [R script to plot the distribution maps](https://github.com/rapidspeciation/mechanitis_melinaea/blob/main/scripts/distribution_maps.R)
 
 **Figure 3:**
 - [Bash script to generate the genome scans with PBS and fd](https://github.com/rapidspeciation/mechanitis_melinaea/tree/main/scripts/nesaea_introgression_PBS.sh)
