@@ -1,0 +1,44 @@
+### script for phylogenetic tree analyses (Figure 1) and calibrated tree (Figure 2)
+
+### input-files ####
+
+VCF_IN-nuc=/path/vcf/base/Melinaea.rmINDEL.max0.5N.minDP2.minmeanDP3.maxmeanDP15.rmINDlowD.CHR.vcf.gz
+VCF_OUT-nuc=/path/filtered/Phylo.Mel.base.thin500.minGQ10.PhyloInd.CHR.vcf.gz
+PHYLIP_OUT-nuc=${VCF_OUT-nuc%%.vcf.gz}
+
+VCF_IN-mt=/path/vcf/Melinaea.MT.vcf.gz
+VCF_OUT-mt.base=/path/vcf/base/Melinaea.rmINDEL.max0.5N.minDP20.minmeanDP200.maxmeanDP1700.rmINDlowD.MT.vcf.gz
+VCF_OUT-mt=/path/filtered/Phylo.Mel.base.minGQ10.PhyloInd.MT.vcf.gz
+PHYLIP_OUT-mt=${VCF_OUT-mt%%.vcf.gz}
+
+REMOVE=/path/scripts/Filtering/IDlists_for_filtering/ID.depth.below2.list
+KEEP=/path/scripts/Filtering/IDlists_for_filtering/IDforPhylo
+DATE=/path/scripts/Phylogenetics/Date_file.txt
+
+### filtering the input files (nuclear and mitochondrial genome) with vcftools ####
+
+module load vcftools/0.1.16--pl5321hd03093a_7
+
+vcftools --gzvcf ${VCF_IN-nuc} --thin 500 --minGQ 10 --keep ${KEEP} --recode --stdout | gzip -c > ${VCF_OUT-nuc}
+
+vcftools --gzvcf ${VCF_IN-mt} --remove-indels --max-missing 0.5 --minDP 20 --min-meanDP 200 --max-meanDP 1700 --remove ${REMOVE} --recode --stdout | gzip -c > ${VCF_OUT-mt.base}
+vcftools --gzvcf ${VCF_OUT-mt.base} --minGQ 10 --keep ${KEEP} --recode --stdout | gzip -c > ${VCF_OUT-mt}
+
+
+### running the phylogenetic analyses ####
+
+# Convert to phylip
+vcf2phylip.py -i ${VCF_OUT-nuc} -o ${PHYLIP_OUT-nuc}.phylip
+vcf2phylip.py -i ${VCF_OUT-mt} -o ${PHYLIP_OUT-mt}.phylip
+
+# Make a phylogenetic tree
+iqtree2 -s ${PHYLIP_OUT-nuc}.phylip -st DNA -m GTR -T 4 --prefix ${PHYLIP_OUT-nuc}.GTR.wB -B 1000
+iqtree2 -s ${PHYLIP_OUT-mt}.phylip -st DNA -m GTR -T 4 --prefix ${PHYLIP_OUT-mt}.GTR.wB -B 1000
+
+# Calibrated time-tree
+iqtree2 -s ${PHYLIP_OUT-nuc}.phylip --date ${DATE} -te ${PHYLIP_OUT-nuc}.GTR.wB.treefile -T 4 --date-tip 0 --date-ci 100 -m GTR --prefix ${PHYLIP_OUT-nuc}.GTR.wB.calibrate        
+
+### where the date-file (example for Melinaea) looks like this: 
+# Eli_mm16_007,Sal_1135 -4.66 
+# CAM070923,CAM027255 -0.65
+## The first row is a ludovica and a menophilus with their divergence time according to Chazot et al 2019. The second row is an isocomma and a lilis.
