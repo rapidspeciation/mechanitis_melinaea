@@ -23,10 +23,15 @@ https://www.biorxiv.org/content/10.1101/2024.07.07.602206v1
 
 **Figure 4:**
 - [R script to filter BUSCO output](https://github.com/rapidspeciation/mechanitis_melinaea/tree/main/scripts/filter_busco_output.R)
-- [R script for preliminary synteny ribbon plot](https://github.com/rapidspeciation/mechanitis_melinaea/tree/main/scripts/plot_synteny.R)
-- [R script for refined synteny ribbon plot](https://github.com/rapidspeciation/mechanitis_melinaea/tree/main/scripts/plot_synteny_fine_tuning.R)
+- [R script for preliminary synteny ribbon plot with busco genes](https://github.com/rapidspeciation/mechanitis_melinaea/tree/main/scripts/plot_synteny.R)
+- [R script for refined synteny ribbon plot with busco genes](https://github.com/rapidspeciation/mechanitis_melinaea/tree/main/scripts/plot_synteny_fine_tuning.R)
 - [R script to calculate and plot rearrangements](https://github.com/rapidspeciation/mechanitis_melinaea/tree/main/scripts/rearrangement_stats.Rmd)
 - [R script to detect breakpoints in Mechanitis and Melinaea](https://github.com/rapidspeciation/mechanitis_melinaea/tree/main/scripts/breakpoints.Rmd)
 - [R script to plot genomescans with breakpoints and boxplots Mech](https://github.com/rapidspeciation/mechanitis_melinaea/tree/main/scripts/genomescan_mec.Rmd)
 - [R script to plot genomescans with breakpoints and boxplots Mel](https://github.com/rapidspeciation/mechanitis_melinaea/tree/main/scripts/genomescan_mel.Rmd)
+- [R script to plot ribbon plot with whole genome alignments](https://github.com/rapidspeciation/mechanitis_melinaea/tree/main/scripts/Syntenyplotter_paf_multi.R)
+- [R script to refine ribbon plot with whole genome alignments](https://github.com/rapidspeciation/mechanitis_melinaea/tree/main/scripts/Syntenyplotter_paf_refining_multi.R)
+- [bash wrapper script to plot ribbon plot with whole genome alignments between haplotypes](https://github.com/rapidspeciation/mechanitis_melinaea/tree/main/scripts/run_syntenyplotter.R)
+- [R script to plot ribbon plot with whole genome alignments between haplotypes](https://github.com/rapidspeciation/mechanitis_melinaea/tree/main/scripts/Syntenyplotter_paf_v4.R)
+
 
