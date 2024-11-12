@@ -3,6 +3,8 @@ title: "Geneflow"
 author: "Karin Näsvall"
 date: "`r Sys.Date()`"
 output: html_document
+editor_options: 
+  chunk_output_type: console
 ---
 
 ```{r setup, include=FALSE}
@@ -21,6 +23,7 @@ library(tidyr)
 library(dplyr)
 library(pals)
 library(ggpubr)
+library(regioneR)
 
 cmd_args <- commandArgs(trailingOnly = TRUE)
 
@@ -120,8 +123,7 @@ width = 6)
 
 #plots scans of fst, dxy and pi, boxplots per chromosome and boxplots of the distribution within and outside breakpoints
 #creates summary tables 
-
-for (i in 1:length(unique(taxa_sel$scan_taxa))){
+for (i in c(2,3,5,6,8:length(unique(taxa_sel$scan_taxa)))){
 
 comp_taxa <- taxa_sel$scan_taxa[i]
 br_taxa <- taxa_sel$V2[i]
@@ -151,7 +153,59 @@ filt_scan_long.df[filt_scan_long.df$scaffold==i & filt_scan_long.df$start > bpr 
 
   }
 }
+
+#randomisation test
+#make a genome file
+genome_size <- read.csv("GCA_918358865.1_ilMelMars1.1_genomic.fa.fai", sep = "\t", header = F)[,c(1:2)]
+colnames(genome_size) <- c("chr", "length")
+genome_size$chr <- sprintf("%02s",sub("ilMelMars1_", "", genome_size$chr))
+genome_size[genome_size$chr=="0Z", "chr"]="Z"
+genome_size[genome_size$chr=="0W", "chr"]="W"
+
+
+#make a region file
+BPregions <- syn_blocks_BPR_red[syn_blocks_BPR_red$br_origin==br_taxa,c("scaffold", "br_start", "br_end")]
+BPregions$start <- BPregions$br_start
+BPregions$end <- BPregions$br_end
+BPregions[BPregions$br_end<BPregions$br_start,"end"]=BPregions[BPregions$br_end<BPregions$br_start,"br_start"]
+BPregions[BPregions$br_end<BPregions$br_start,"start"]=BPregions[BPregions$br_end<BPregions$br_start,"br_end"]
+
+BPregions <- BPregions[,c("scaffold","start","end")]
+colnames(BPregions) <- c("chr","start","end")
+
+A=toGRanges(BPregions, genome = genome_size)
+
+value_file_fst <- as.data.frame(filt_scan_long.df[,c("scaffold", "start", "end", "value")]) %>%
+  filter(!is.na(value))
+
+x_fst=toGRanges(value_file_fst, genome = genome_size)
+
+set.seed(123)
+nperm=50000
   
+pt_fst <- permTest(A=BPregions, genome=genome_size, randomize.function=randomizeRegions, ntimes=nperm, evaluate.function=meanInRegions, x=value_file_fst, mc.set.seed=FALSE)
+
+y_line=2500
+
+rand_fst_plot <- 
+ggplot() +
+  geom_histogram(aes(pt_fst$meanInRegions$permuted), bins = 100, fill="grey80") +
+  #geom_density(aes(rnorm(n = 100000, mean = mean(pt_fst$meanInRegions$permuted, rm.na=T), sd = sd(pt_fst$meanInRegions$permuted))), size=0.5) +
+  geom_line(data = data.frame(x = c(pt_fst$meanInRegions$observed, pt_fst$meanInRegions$observed), y = c(0, y_line)), aes(x,y), colour="blue", size=line_size) +
+  geom_line(data = data.frame(x=c(mean(pt_fst$meanInRegions$permuted, na.rm=T), mean(pt_fst$meanInRegions$permuted, na.rm=T)), y=c(0, y_line)), aes(x,y), linetype="dotted", colour="grey20", size=line_size) +
+  geom_line(data = data.frame(x = c(min(pt_fst$meanInRegions$permuted[percent_rank(x = pt_fst$meanInRegions$permuted)>0.95]), min(pt_fst$meanInRegions$permuted[percent_rank(x = pt_fst$meanInRegions$permuted)>0.95])), y = c(0, y_line)), aes(x,y), colour="grey40", linetype= "solid", size=line_size) +
+  annotate(geom = "label", x = Inf, y = Inf, vjust=1, hjust=1, label = paste("P-value: ", sprintf(fmt = "%0.02e", pt_fst$meanInRegions$pval), ", ", "Z-score: ", round(pt_fst$meanInRegions$zscore,3), sep = ""),
+           size=text_size/2.85) +
+  annotate(geom = "text", x = pt_fst$meanInRegions$observed, y = y_line+150, hjust=1,label = expression("EV"["OBS"]), colour="blue",size=text_size/2.85) +
+  annotate(geom = "text", x = mean(pt_fst$meanInRegions$permuted, na.rm=T), y = y_line+150, hjust=1, label = expression("EV"["PERM"]),size=text_size/2.85) +
+  ggtitle(label = " ") +
+  scale_x_continuous(name = expression("F"["ST"])) +
+  scale_y_continuous(limits = c(0, y_line+1000)) +
+  theme_classic() +
+  theme(title = element_text(face = "italic"),
+        text = element_text(size = text_size),
+        axis.text = element_text(size = text_size),
+        axis.title.y = element_blank())
 
 
 fst_scan <- 
@@ -236,11 +290,11 @@ sum_stat$p.signif <- c(p_value_wilcox1$p.signif, p_value_wilcox1$p.signif)
 
 if (i==1){
 write.table(sum_stat[,c("taxa", "statistic", "BPR", "mean_stat", "sd_stat", "p_value", "p.signif")], row.names = F,col.names = T,
-            file = paste("../../genomescan/output/", genus, "/","sum_fst_dxy.table", sep = ""))
+            file = paste("../../genomescan/output/", genus, "/", Sys.Date(),"sum_fst_dxy.table", sep = ""))
 
   } else {
 write.table(sum_stat[,c("taxa", "statistic", "BPR", "mean_stat", "sd_stat", "p_value", "p.signif")], row.names = F,col.names = F,
-            file = paste("../../genomescan/output/", genus, "/","sum_fst_dxy.table", sep = ""), append = T)
+            file = paste("../../genomescan/output/", genus, "/", Sys.Date(),"sum_fst_dxy.table", sep = ""), append = T)
 
 }
 
@@ -266,6 +320,35 @@ filt_scan_long.df[filt_scan_long.df$scaffold==i & filt_scan_long.df$start > bpr 
   
 
 }
+
+#randomisation test
+
+value_file_dxy <- as.data.frame(filt_scan_long.df[,c("scaffold", "start", "end", "value")]) %>%
+  filter(!is.na(value))
+
+x_dxy=toGRanges(value_file_dxy, genome = genome_size)
+
+pt_dxy <- permTest(A=A, genome=genome_size, randomize.function=randomizeRegions, ntimes=nperm, evaluate.function=meanInRegions, x=x_dxy, alternative = "auto", mc.set.seed=FALSE)
+
+rand_dxy_plot <- 
+ggplot() +
+  geom_histogram(aes(pt_dxy$meanInRegions$permuted), bins = 100, fill="grey80") +
+  #geom_density(aes(rnorm( mean = mean(pt_dxy$meanInRegions$permuted, rm.na=T), sd = sd(pt_dxy$meanInRegions$permuted))), size=0.5) +
+  geom_line(data = data.frame(x = c(pt_dxy$meanInRegions$observed, pt_dxy$meanInRegions$observed), y = c(0,y_line)), aes(x,y), colour="blue", size=line_size) +
+  geom_line(data = data.frame(x=c(mean(pt_dxy$meanInRegions$permuted, na.rm=T), mean(pt_dxy$meanInRegions$permuted, na.rm=T)), y=c(0, y_line)), aes(x,y), linetype="dotted", colour="grey20", size=line_size) +
+  geom_line(data = data.frame(x = c(min(pt_dxy$meanInRegions$permuted[percent_rank(x = pt_dxy$meanInRegions$permuted)>0.95]), min(pt_dxy$meanInRegions$permuted[percent_rank(x = pt_dxy$meanInRegions$permuted)>0.95])), y = c(0, y_line)), aes(x,y), colour="grey40", linetype= "solid", size=line_size) +
+  annotate(geom = "label", x = Inf, y = Inf, vjust=1, hjust=1, label = paste("P-value: ", sprintf(fmt = "%0.02e", pt_dxy$meanInRegions$pval), ", ", "Z-score: ", round(pt_dxy$meanInRegions$zscore,3), sep = ""), size=text_size/2.85) +
+  annotate(geom = "text", x = pt_dxy$meanInRegions$observed, y = y_line+150, hjust=1,label = expression("EV"["OBS"]), colour="blue",size=text_size/2.85) +
+  annotate(geom = "text", x = mean(pt_dxy$meanInRegions$permuted, na.rm=T), y = y_line+150, hjust=1, label = expression("EV"["PERM"]),size=text_size/2.85) +  
+  ggtitle(label = " ") +
+  scale_x_continuous(name = expression("D"["XY"])) +
+  scale_y_continuous(limits = c(0, y_line+1000)) +
+  theme_classic() +
+  theme(title = element_text(face = "italic"),
+        text = element_text(size = text_size),
+        axis.text = element_text(size = text_size),
+        axis.title.y = element_blank())
+
 
 dxy_scan <- 
 filt_scan_long.df %>%
@@ -346,7 +429,7 @@ sum_stat$p_value <- c(p_value_wilcox1$p, p_value_wilcox1$p)
 sum_stat$p.signif <- c(p_value_wilcox1$p.signif, p_value_wilcox1$p.signif)
 
 write.table(sum_stat[,c("taxa", "statistic", "BPR","mean_stat","sd_stat", "p_value", "p.signif")], row.names = F,col.names = F,
-            file = paste("../../genomescan/output/", genus, "/","sum_fst_dxy.table", sep = ""), append = T)
+            file = paste("../../genomescan/output/", genus, "/", Sys.Date(),"sum_fst_dxy.table", sep = ""), append = T)
 
 
 
@@ -374,6 +457,67 @@ filt_scan_long.df[filt_scan_long.df$scaffold==i & filt_scan_long.df$start > bpr 
 
 #change names for plot
 filt_scan_long.df$taxa <- paste(paste(genus, ".", sep = ""), filt_scan_long.df$taxa)
+
+value_file_1 <- as.data.frame(filt_scan_long.df[filt_scan_long.df$taxa==unique(filt_scan_long.df$taxa)[1],c("scaffold", "start", "end", "value")]) %>%
+  filter(!is.na(value))
+
+x_1=toGRanges(value_file_1, genome = genome_size)
+
+pt <- permTest(A=A, genome=genome_size, randomize.function=randomizeRegions, ntimes=nperm, evaluate.function=meanInRegions, x=x_1, alternative = "auto", mc.set.seed=FALSE)
+
+value_file_2 <- as.data.frame(filt_scan_long.df[filt_scan_long.df$taxa==unique(filt_scan_long.df$taxa)[2],c("scaffold", "start", "end", "value")]) %>%
+  filter(!is.na(value))
+
+x_2=toGRanges(value_file_2, genome = genome_size)
+
+pt_2 <- permTest(A=A, genome=genome_size, randomize.function=randomizeRegions, ntimes=nperm, evaluate.function=meanInRegions, x=x_2, alternative = "auto", mc.set.seed=FALSE)
+
+
+
+rand_pi_plot_1 <- 
+ggplot() +
+  geom_histogram(aes(pt$meanInRegions$permuted), bins = 100, fill="grey80") +
+  #geom_density(aes(rnorm( mean = mean(pt$meanInRegions$permuted, rm.na=T), sd = sd(pt$meanInRegions$permuted))), size=0.5) +
+  geom_line(data = data.frame(x = c(pt$meanInRegions$observed, pt$meanInRegions$observed), y = c(0,y_line)), aes(x,y), colour="blue", size=line_size) +
+  geom_line(data = data.frame(x=c(mean(pt$meanInRegions$permuted, na.rm=T), mean(pt$meanInRegions$permuted, na.rm=T)), y=c(0, y_line)), aes(x,y), linetype="dotted", colour="grey20", size=line_size) +
+  geom_line(data = data.frame(x = c(min(pt$meanInRegions$permuted[percent_rank(x = pt$meanInRegions$permuted)>0.05]), min(pt$meanInRegions$permuted[percent_rank(x = pt$meanInRegions$permuted)>0.05])), y = c(0, y_line)), aes(x,y), colour="grey40", linetype= "solid", size=line_size) +
+  annotate(geom = "label", x = Inf, y = Inf, vjust=1, hjust=1, label = paste("P-value: ", sprintf(fmt = "%0.02e", pt$meanInRegions$pval), ", ", "Z-score: ", round(pt$meanInRegions$zscore,3), sep = ""),
+           size=text_size/2.85) +
+  annotate(geom = "text", x = pt$meanInRegions$observed, y = y_line+150,label = expression("EV"["OBS"]), colour="blue", size=text_size/2.85) +
+  annotate(geom = "text", x = mean(pt$meanInRegions$permuted, na.rm=T), y = y_line+150, hjust=1, label = expression("EV"["PERM"]), size=text_size/2.85) +
+  ggtitle(label = unique(filt_scan_long.df$taxa)[1]) +
+  scale_x_continuous(name = expression(pi)) +
+  scale_y_continuous(limits = c(0, y_line+1000)) +
+  theme_classic() +
+  theme(title = element_text(face = "italic"),
+        text = element_text(size = text_size),
+        axis.text = element_text(size = text_size),
+        axis.title.y = element_blank(),
+        plot.margin = unit(c(10,10,13,0), "pt"))
+
+
+rand_pi_plot_2 <- 
+ggplot() +
+  geom_histogram(aes(pt_2$meanInRegions$permuted), bins = 100, fill="grey80") +
+  #geom_density(aes(rnorm( mean = mean(pt_2$meanInRegions$permuted, rm.na=T), sd = sd(pt_2$meanInRegions$permuted))), size=0.5) +
+  geom_line(data = data.frame(x = c(pt_2$meanInRegions$observed, pt_2$meanInRegions$observed), y = c(0,y_line)), aes(x,y), colour="blue", size=line_size) +
+  geom_line(data = data.frame(x=c(mean(pt_2$meanInRegions$permuted, na.rm=T), mean(pt_2$meanInRegions$permuted, na.rm=T)), y=c(0, y_line)), aes(x,y), linetype="dotted", colour="grey20", size=line_size) +
+  geom_line(data = data.frame(x = c(min(pt_2$meanInRegions$permuted[percent_rank(x = pt_2$meanInRegions$permuted)>0.05]), min(pt_2$meanInRegions$permuted[percent_rank(x = pt_2$meanInRegions$permuted)>0.05])), y = c(0, y_line)), aes(x,y), colour="grey40", linetype= "solid", size=line_size) +
+  annotate(geom = "label", x = Inf, y = Inf, vjust=1, hjust=1, label = paste("P-value: ", sprintf(fmt = "%0.02e", pt_2$meanInRegions$pval), ", ", "Z-score: ", round(pt_2$meanInRegions$zscore,3), sep = ""),
+           size=text_size/2.85) +
+  annotate(geom = "text", x = pt_2$meanInRegions$observed, y = y_line+150,label = expression("EV"["OBS"]), colour="blue",
+           size=text_size/2.85) +
+  annotate(geom = "text", x = mean(pt_2$meanInRegions$permuted, na.rm=T), y = y_line+150, hjust=1, label = expression("EV"["PERM"]), size=text_size/2.85) +
+  ggtitle(label = unique(filt_scan_long.df$taxa)[2]) +
+  scale_x_continuous(name = expression(pi)) +
+  scale_y_continuous(limits = c(0, y_line+1000)) +
+  theme_classic() +
+  theme(title = element_text(face = "italic"),
+        text = element_text(size = text_size),
+        axis.text = element_text(size = text_size),
+        axis.title.y = element_blank(),
+        plot.margin = unit(c(10,15,13,0), "pt"))
+
 
 pi_scan <- 
 filt_scan_long.df %>%
@@ -475,32 +619,39 @@ sum_stat$p.signif <- c(p_value_wilcox1$p.signif, p_value_wilcox2$p.signif, p_val
 
 if (i==1){
 write.table(sum_stat[,c("comp", "taxa", "statistic", "BPR", "mean_stat", "sd_stat", "p_value", "p.signif")], row.names = F,col.names = T,
-            file = paste("../../genomescan/output/", genus, "/","sum_pi.table", sep = ""))
+            file = paste("../../genomescan/output/", genus, "/", Sys.Date(),"sum_pi.table", sep = ""))
 
   } else {
 write.table(sum_stat[,c("comp", "taxa", "statistic", "BPR", "mean_stat", "sd_stat", "p_value", "p.signif")], row.names = F,col.names = F,
-            file = paste("../../genomescan/output/", genus, "/","sum_pi.table", sep = ""), append = T)
+            file = paste("../../genomescan/output/", genus, "/", Sys.Date(),"sum_pi.table", sep = ""), append = T)
 
 }
 
 
+#add title
+fst_scan <- fst_scan +
+  ggtitle(label = paste(unique(filt_scan_long.df$taxa)[1],"vs", unique(filt_scan_long.df$taxa)[2], sep = " ")) +
+  theme(title = element_text(face = "italic"))
 
 ggsave(
 ggarrange(fst_scan, dxy_scan, pi_scan,
-          ggarrange(box_fst, box_dxy, box_pi,
-                    nrow = 1, align = "v"),
-          nrow = 4, heights = c(1,1,2,2), labels = c("A", "", "", "B"), font.label = list(size=24, face="plain", family="Calibri")),
+          ggarrange(rand_fst_plot, rand_dxy_plot, 
+                    ggarrange(rand_pi_plot_1, rand_pi_plot_2,
+                              nrow = 1, align = "h"),
+                    nrow = 1, widths = c(1,1,1.8)),
+          nrow = 4, heights = c(1.2,1,2,2), labels = c("A", "", "", "B"), font.label = list(size=24, face="plain", family="Calibri")),
 filename=paste("../../genomescan/output/", genus, "/", comp_taxa, "_fst_dxy_pi_", Sys.Date(), ".png", sep = ""),
 height = 12,
-width = 18
+width = 18,
+bg = "white"
 )
 
-ggsave(
-ggarrange(box_per_chr_fst, box_per_chr_dxy, box_per_chr_pi, ncol = 1, heights = c(1,1,2), align = "v"),
-filename=paste("../../genomescan/output/", genus, "/", comp_taxa, "_per_chr", Sys.Date(), ".png", sep = ""),
-height = 12,
-width = 18
-)
+# ggsave(
+# ggarrange(box_per_chr_fst, box_per_chr_dxy, box_per_chr_pi, ncol = 1, heights = c(1,1,2), align = "v"),
+# filename=paste("../../genomescan/output/", genus, "/", comp_taxa, "_per_chr", Sys.Date(), ".png", sep = ""),
+# height = 12,
+# width = 18
+# )
 
 }
 

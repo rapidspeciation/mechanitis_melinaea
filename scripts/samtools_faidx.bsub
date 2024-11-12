@@ -1,0 +1,19 @@
+#!/bin/bash
+#BSUB -M 100
+#BSUB -R "select[mem>100] rusage[mem=100] span[hosts=1]"
+#BSUB -n 2
+#BSUB -q normal
+#BSUB -J samtools_faidx[1-12]
+#BSUB -o log/samtools_lsf_output.%J_%I.txt
+#BSUB -e log/samtools_lsf_error.%J_%I.txt
+
+
+module load samtools/1.20--h50ea8bc_0
+
+list_files=genome_list
+
+file=$(sed -n -e "$LSB_JOBINDEX  p" $list_files)
+
+#zcat $file |samtools faidx - -o ${file}.fai 
+samtools faidx $file
+

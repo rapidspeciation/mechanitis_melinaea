@@ -20,6 +20,7 @@ library(tidyr)
 library(dplyr)
 library(pals)
 library(ggpubr)
+library(tidyverse)
 
 cmd_args <- commandArgs(trailingOnly = TRUE)
 
@@ -28,60 +29,35 @@ cmd_args <- commandArgs(trailingOnly = TRUE)
 
 
 ```{r data}
-#read busco full.table concatenated for all species
+#read busco full.table concatenated for all species, but use the old Menc messenoides and Mel marsaeus assembly to match the genome scans!!! 
 #prep with rename_busco_output.R
 #this part is the same as in rearrangement stats
 
 #table_file <- cmd_args[1]
-table_file <- "../../synteny/intermediate/Mec_Mel_busco_full_table_formated.table"
+table_file <- "../output/busco_file.table"
 
 busco_file <- read.table(table_file)
-colnames(busco_file) <- c("marker", "chr", "start", "end", "strand", "taxa", "chr_len")
 
-#keep only chr number, easier to order
-busco_file <- 
-busco_file %>%
-  mutate(chr=sprintf("%02s", sub(".*_", "", chr))) %>%
-  mutate(chr=sub("^0([A-Z])", "\\1" , chr))
-
-col_anc_seq <- as.data.frame(cbind(chr=unique(busco_file[busco_file$taxa=="ilMelCinx1", "chr"]), anc_element=unique(busco_file[busco_file$taxa=="ilMelCinx1", "chr"]), colour_seq=pals::polychrome(n = 31)))
-
-busco_file <- 
-left_join(busco_file, busco_file[busco_file$taxa=="ilMelCinx1", c("marker", "chr")], by="marker")
-
-colnames(busco_file)[2] <- "chr"
-colnames(busco_file)[8] <- "anc_element"
 
 busco_file <- 
 busco_file %>%
 filter(!is.na(anc_element))
 
 #get the right order of the taxa
-chr_length <- read.table("../../synteny/intermediate/Mec_Mel_sequence_order_mod6.table")
-colnames(chr_length) <- c("taxa", "chr", "chr_len")
-bin_id_order <- unique(chr_length$taxa)
+bin_id_order <- c("Melitaea cinxia", "Danaus plexippus", "Mec. macrinus", "Mec. mazaeus", "Mec. menapis", "Mec. messenoides", "Mec. polymnia", "Mel. ludovica", "Mel. isocomma", "Mel. mothone", "Mel. menophilus", "Mel. marsaeus")
 
 taxa_names_id <- data.frame(cbind(species_name=c("Melitaea cinxia", "Danaus plexippus", "Melinaea ludovica", "Melinaea isocomma", "Melinaea mothone", "Melinaea menophilus", "Melinaea marsaeus", "Mechanitis macrinus", "Mechanitis mazaeus", "Mechanitis menapis", "Mechanitis messenoides", "Mechanitis polymnia"), taxa=bin_id_order))
 
 # taxa_names <- bin_id_order
 # names(taxa_names) <- taxa_names_id$species_name
 
-busco_file <- busco_file[order(match(busco_file$taxa, bin_id_order)),]
-busco_file$taxa <- as.factor(busco_file$taxa)
-busco_file$taxa <- factor(busco_file$taxa, levels = c(bin_id_order))
+busco_file <- busco_file[order(match(busco_file$species_name, c("Melitaea cinxia", "Danaus plexippus", "Mec. macrinus", "Mec. mazaeus", "Mec. menapis", "Mec. messenoides", "Mec. polymnia", "Mel. ludovica", "Mel. isocomma", "Mel. mothone", "Mel. menophilus", "Mel. marsaeus"))),]
+busco_file$species_name <- as.factor(busco_file$species_name)
+busco_file$species_name <- factor(busco_file$species_name, levels = c(bin_id_order))
 
-#isocomma Z is chr 2
-busco_file[busco_file$taxa=="ilMelIsoc1" & busco_file$chr=="02", "chr"]="Z"
-
-busco_file <- 
-  busco_file %>%
-   left_join(taxa_names_id) %>%
-  mutate(species_name=as.factor(species_name))
-
-busco_file$species_name <- factor(busco_file$species_name, levels = c(taxa_names_id$species_name))
 
 #remove W
-busco_file <- busco_file[busco_file$chr!="W" & busco_file$chr!="W2",] 
+busco_file <- busco_file[busco_file$chr!="W" & busco_file$chr!="W2"& busco_file$chr!="W1" & busco_file$chr!="W3",] 
 
 
 ```
@@ -90,9 +66,6 @@ busco_file <- busco_file[busco_file$chr!="W" & busco_file$chr!="W2",]
 
 
 ```{r gen_breakpoint_regions_mec}
-
-#if not in env
-#busco_file <- read.table(file = "../output/busco_file.table")
 
 genus <- "Mec"
 ref_coord <- "ilMecMess1"
@@ -111,11 +84,14 @@ filter.df <- subset(filter.df, marker %in% Reduce(intersect, split(filter.df$mar
 queries <- unique(filter.df[filter.df$taxa != ref_coord, "taxa"])
 
 #make a list af all comparisons
-list_comp <- data.frame(cbind(ref=c(rep(ref_coord,4),rep(queries[1],3), rep(queries[2],2), rep(queries[3],1)), 
+list_comp <- data.frame(cbind(ref=c(rep(ref_coord,4),
+                                    rep(queries[1],3), 
+                                    rep(queries[2],2), 
+                                    rep(queries[3],1)), 
                    query=c(queries, queries[2:4], queries[3:4], queries[4])))
 
 #colours for plotting
-synt_col <- rev(as.vector(c(pals::kelly(),pals::polychrome()))[2:c(1+length(unique(col_anc_seq$anc_element)))])
+synt_col <- rev(as.vector(c(pals::kelly(),pals::polychrome()))[2:c(1+length(unique(busco_file$anc_element)))])
 #change grey
 synt_col[9] <-"#85660D"
 synt_col[10] <- "#66B0FF"  
@@ -209,6 +185,13 @@ axis.title = element_blank())
 ggsave(file = paste("../output/comparisons/", genus, "/br_", ref_taxa,"_", query1, Sys.Date(), genus, ".png", sep = ""),
        height = 6,
        width = 8)
+
+#add to common table
+if (i == 1){
+  breakpoints <- breakpoints_q
+} else {
+  breakpoints <- rbind(breakpoints, breakpoints_q)
+}
 
 write.table(breakpoints_q, file = paste("../output/comparisons/", genus, "/br_", ref_taxa,"_", query1, Sys.Date(), genus, ".table", sep = ""))
 
@@ -293,9 +276,6 @@ if (i==1) {
 
 ```{r breakpoint_regions_mel}
 
-#if not in env
-#busco_file <- read.table(file = "../output/busco_file.table")
-
 genus <- "Mel"
 ref_coord <- "ilMelMars1"
 
@@ -325,7 +305,7 @@ list_comp <- data.frame(cbind(ref=c(rep(ref_coord,4),rep(queries[1],3), rep(quer
 #appends to table of the breakpoint start and end mapped to the genus reference
 
 #colours for plotting
-synt_col <- rev(as.vector(c(pals::kelly(),pals::polychrome()))[2:c(1+length(unique(col_anc_seq$anc_element)))])
+synt_col <- rev(as.vector(c(pals::kelly(),pals::polychrome()))[2:c(1+length(unique(busco_file$anc_element)))])
 #change grey
 synt_col[9] <-"#85660D"
 synt_col[10] <- "#66B0FF"  
@@ -420,6 +400,14 @@ ggsave(file = paste("../output/comparisons/", genus, "/br_", ref_taxa,"_", query
        height = 6,
        width = 8)
 
+#add to common table
+if (i == 1){
+  breakpoints <- breakpoints_q
+} else {
+  breakpoints <- rbind(breakpoints, breakpoints_q)
+}
+
+
 write.table(breakpoints_q, file = paste("../output/comparisons/", genus, "/br_", ref_taxa,"_", query1, Sys.Date(), genus, ".table", sep = ""))
 
 #use ref coordinates and append to concat file
@@ -498,18 +486,99 @@ if (i==1) {
 #manually check bed breakpoint regions against plots
 
 
-
 ```
 
 
-```{r br_polymnia}
+```{r br_points_matrix}
 
-br_df <- read.table("../output/comparisons/Mec/br_all_2024-06-20MecilMecMess1.table", header = T)
+#number of breaks per comparison, filter a>1 removes the start position of each break point region
+#note that the breakpoints mapped to the reference genomes differ due to change in position of the markers in the ref genome vs to the compared genomes that are used here
 
-unique(br_df$br_origin)
+#read in breakpoint from each comparison not the one mapped to reference
+genus="Mec"
+path_file=paste("../output/comparisons/", genus,"/", sep="")
 
-write.csv(br_df[str_detect(br_df$br_origin, "MecPoly"),
-                c("marker","br_origin","taxa","chr","chr_len","br_start","br_end")], 
-                file = "../output/comparisons/Mec/br_polymnia_2024-06-21.csv")
+breakpoints_mec <-
+  list.files(path = path_file, pattern = "*03Mec.table", full.names = T)[1:10] %>% 
+  map_df(~read.table(., header=T)%>% mutate(chr = as.character(chr), chr_query1=as.character(chr_query1),
+                                            anc_element = as.character(anc_element), anc_element_query1 =  as.character(anc_element_query1))) 
+
+genus="Mel"
+path_file=paste("../output/comparisons/", genus,"/", sep="")
+
+breakpoints_mel <-
+  list.files(path = path_file, pattern = "*03Mel.table", full.names = T)[1:10] %>% 
+  map_df(~read.table(., header=T)%>% mutate(chr = as.character(chr), chr_query1=as.character(chr_query1),
+                                            anc_element = as.character(anc_element), anc_element_query1 =  as.character(anc_element_query1)))
+
+
+br_df <- 
+rbind(breakpoints_mel,breakpoints_mec) %>%
+  filter(a>1) %>%
+  group_by(br_origin) %>%
+  summarize(species_name, species_name_query1, n=n()) %>%
+  unique()
+
+
+br_df$species_name <- sub("Melinaea", "Mel.", br_df$species_name)
+br_df$species_name <- sub("Mechanitis", "Mec.", br_df$species_name)
+
+br_df$species_name <- as.factor(br_df$species_name)
+br_df$species_name <- factor(br_df$species_name, levels = c("Mec. messenoides", "Mec. macrinus", "Mec. mazaeus", "Mec. menapis", "Mel. marsaeus", "Mel. ludovica","Mel. isocomma",  "Mel. mothone"))
+
+br_df$species_name_query1 <- sub("Melinaea", "Mel.", br_df$species_name_query1)
+br_df$species_name_query1 <- sub("Mechanitis", "Mec.", br_df$species_name_query1)
+
+br_df$species_name_query1 <- as.factor(br_df$species_name_query1)
+br_df$species_name_query1 <- factor(br_df$species_name_query1, levels = c("Mec. macrinus", "Mec. mazaeus", "Mec. menapis", "Mec. polymnia", "Mel. ludovica", "Mel. isocomma", "Mel. mothone", "Mel. menophilus"))
+
+write.table(br_df, paste("../output/breakpoints_", Sys.Date(), ".table", sep = ""))
+br_df <- read.table("../output/breakpoints_2024-11-06.table")
+  
+
+text_size=16
+  
+br_df %>%
+  ungroup() %>%
+  select(species_name, species_name_query1,n ) %>%
+ggplot(aes(species_name, species_name_query1, fill=n)) +
+  geom_tile() +
+  geom_text(aes(label=n), size = text_size/2.8, fontface = "bold") +
+  scale_y_discrete(limits=rev) +
+  scale_x_discrete(position = "bottom") +
+    scale_fill_gradient(name = "Count",
+                        limits = c(min(br_df$n, na.rm = T),max(br_df$n, na.rm = T)),
+                        #low = "lightblue",
+                        #high = "royalblue2",
+                        # low = "lightskyblue1",
+                        # high = "dodgerblue3"
+                        low = "#c3e6fc",
+                        high = "#5E83A2"
+                        ) +
+    theme(axis.title = element_blank(),
+          axis.text.x = element_text(size= text_size, angle = 30, face = "italic", hjust = 1, vjust = 1, colour = "grey10"),
+          axis.text.y = element_text(size= text_size, face = "italic", colour = "grey10", hjust = 0),
+          panel.background = element_blank(),
+          panel.grid = element_line(linewidth = 0.2, colour = "grey"),
+          legend.position = "inside",
+          legend.direction = "horizontal",
+          legend.position.inside = c(0.7,0.8),
+          legend.text = element_text(size = 14),
+          legend.title = element_text(size = 14)
+          )
+    
+
+
+ggsave(
+       filename  = "../output/plot_nr_rearr_blue_tex_down_legtop.pdf",
+       height = 4,
+       width = 5.5,
+       bg = "transparent")
+
+ggsave(
+       filename  = "../output/plot_nr_rearr.png",
+       height = 6,
+       width = 10)
+
 ```
 
