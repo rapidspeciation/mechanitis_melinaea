@@ -27,7 +27,6 @@ unique(Melinaea$Subsp_full)
 dat_mael_mech <- st_as_sf(Mechanitis, coords = c("Longitude", "Latitude"), crs = 4326)
 dat_mael_mel <- st_as_sf(Melinaea, coords = c("Longitude", "Latitude"), crs = 4326)
 
-##### Phylogeny paper #####
 tmap_mode("view")
 
 ## east = red
@@ -305,10 +304,6 @@ mot <- tm_basemap("Esri.WorldTerrain")+
 lf_mot <- tmap_leaflet(mot)
 mapshot(lf_mot, file="~/phylodist-mot.jpg")
 
-#  tm_shape(conv_mot)+
-#  tm_borders(col = "red", lwd = 2)+
-#  tm_fill(col = "red", alpha = 0.6)
-
 ## tarapotensis = east
 conv_tar <- st_simplify(st_buffer(st_convex_hull(st_union(st_geometry(filter(dat_sf_mech, Category == "tarapotensis")))), dist = 15000), dTolerance = 5000)
 conv_tar.M <- st_simplify(st_buffer(st_convex_hull(st_union(st_geometry(filter(dat_mael_mel, Subsp_full == "Melinaea.satevis.tarapotensis")))), dist = 15000), dTolerance = 5000)
@@ -323,10 +318,6 @@ tar <- tm_basemap("Esri.WorldTerrain")+
 
 lf_tar <- tmap_leaflet(tar)
 mapshot(lf_tar, file="~/phylodist-tar.jpg")
-
-#  tm_shape(conv_tar)+
-#  tm_borders(col = "red", lwd = 2)+
-#  tm_fill(col = "red", alpha = 0.6)
 
 ## zaneka = east
 conv_zan <- st_simplify(st_buffer(st_convex_hull(st_union(st_geometry(filter(dat_sf_mech, Category == "zaneka")))), dist = 15000), dTolerance = 5000)
