@@ -1,0 +1,8 @@
+#model Fc, bidirectional migration between 
+# 1. nesaea and polymnia
+# 2. nesaea and lysimnia
+tree (A,(B,C));
+define T as B,C
+define R as A,B
+bidirection B T, C T as I J phi=0.5,0.5
+bidirection A R, I T as S H phi=0.5,0.5

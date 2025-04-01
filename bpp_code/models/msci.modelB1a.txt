@@ -1,0 +1,4 @@
+#Model B1a
+tree (A,(B,C)T)R;
+hybridization T C, T B as J I tau=no, yes phi=0.10
+hybridization R A, T I as S H tau=no, yes phi=0.10
