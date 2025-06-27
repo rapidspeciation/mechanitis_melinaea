@@ -36,3 +36,6 @@ https://www.biorxiv.org/content/10.1101/2024.07.07.602206v1
 - [bash wrapper script to plot ribbon plot with whole genome alignments between haplotypes](https://github.com/rapidspeciation/mechanitis_melinaea/tree/main/scripts/run_syntenyplotter.R)
 - [R script to plot ribbon plot with whole genome alignments between haplotypes](https://github.com/rapidspeciation/mechanitis_melinaea/tree/main/scripts/Syntenyplotter_paf_v4.R)
 
+**Phylogenies**
+- [Mechanitis nuclear IQtree](https://github.com/rapidspeciation/mechanitis_melinaea/blob/main/input/Phylo.Mech.base.thin500.minGQ10.PhyloInd.ALL.wB.treefile.renamed)
+- [Melinaea nuclear IQtree](https://github.com/rapidspeciation/mechanitis_melinaea/blob/main/input/Phylo.Mel.base.thin500.minGQ10.PhyloInd.ALL.GTR.wB.treefile.renamed)
