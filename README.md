@@ -1,4 +1,4 @@
-# Code and data underlying the manuscript by van der Heijden et al. (2025) in PNAS on 'Genomics of Neotropical biodiversity indicators: Two butterfly radiations with rampant chromosomal rearrangements and hybridization'
+## Code and data underlying the manuscript by van der Heijden et al. (2025) in PNAS on 'Genomics of Neotropical biodiversity indicators: Two butterfly radiations with rampant chromosomal rearrangements and hybridization'
 [PNAS paper](https://www.pnas.org/doi/abs/10.1073/pnas.2410939122)
 
 **Processing of raw reads**
